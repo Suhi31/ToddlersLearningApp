@@ -4,10 +4,27 @@
 <dict>
 	<key>SchemeUserState</key>
 	<dict>
-		<key>ToddlerLearningApp.xcscheme_^#shared#^_</key>
+		<key>Copy of ToddlerLearningApp.xcscheme</key>
 		<dict>
+			<key>isShown</key>
+			<false/>
 			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+		<key>ToddlerLearningApp.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>isShown</key>
+			<true/>
+			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>88298FA03025E92200CD68DD</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

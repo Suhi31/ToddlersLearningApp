@@ -12,7 +12,7 @@ struct QuizView: View {
 
     // Adaptive rather than a fixed 2-column grid so 4 or 5 options both lay out
     // cleanly instead of leaving an orphaned tile on its own row.
-    private let columns = [GridItem(.adaptive(minimum: 130), spacing: 14)]
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
 
     init(viewModel: QuizViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
@@ -71,21 +71,21 @@ struct QuizView: View {
     private var prompt: some View {
         VStack(spacing: AppSpacing.tight) {
             Text(viewModel.promptEmoji)
-                .font(.system(size: 96))
+                .font(.system(size: 220))
                 .scaleEffect(viewModel.feedback == .correct ? 1.15 : 1.0)
                 .animation(.spring(response: 0.4, dampingFraction: 0.5),
                            value: viewModel.feedback)
 
             Text(viewModel.promptWord)
-                .font(AppFonts.heading)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
                 .foregroundStyle(AppColors.title)
 
             Text("Which letter does it start with?")
-                .font(AppFonts.caption)
+                .font(AppFonts.body)
                 .foregroundStyle(AppColors.subtitle)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, AppSpacing.section)
+        .padding(.vertical, AppSpacing.section * 1.5)
         .background(AppColors.card)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
         .softShadow()
@@ -106,10 +106,10 @@ struct QuizView: View {
             viewModel.select(letter)
         } label: {
             Text(letter.uppercase)
-                .font(.system(size: 52, weight: .heavy, design: .rounded))
+                .font(.system(size: 84, weight: .heavy, design: .rounded))
                 .foregroundStyle(foreground(for: letter, answer: answer))
                 .frame(maxWidth: .infinity)
-                .frame(height: 100)
+                .frame(height: 150)
                 .background(background(for: letter, answer: answer, tint: tint))
                 .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
                 .softShadow()

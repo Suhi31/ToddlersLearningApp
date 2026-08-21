@@ -14,8 +14,11 @@ struct NumberQuizView: View {
     @State private var viewModel: NumberQuizViewModel
     private let coordinator: AppCoordinator
 
-    private let optionColumns = [GridItem(.adaptive(minimum: 100), spacing: 14)]
-    private let promptColumns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 5)
+    private let optionColumns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
+    // Adaptive, not a fixed 5-across grid, so items get room to breathe and grow
+    // instead of packing edge-to-edge once the count climbs toward 10 — cramped
+    // items are hard for a toddler to visually separate while counting.
+    private let promptColumns = [GridItem(.adaptive(minimum: 80, maximum: 120), spacing: 18)]
 
     init(viewModel: NumberQuizViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
@@ -72,23 +75,24 @@ struct NumberQuizView: View {
 
     private var prompt: some View {
         VStack(spacing: AppSpacing.tight) {
-            LazyVGrid(columns: promptColumns, spacing: 6) {
+            LazyVGrid(columns: promptColumns, spacing: 18) {
                 ForEach(0..<viewModel.promptCount, id: \.self) { _ in
                     Text(viewModel.promptEmoji)
-                        .font(.system(size: 40))
+                        .font(.system(size: 68))
                 }
             }
-            .frame(maxWidth: 260)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, AppSpacing.element)
             .scaleEffect(viewModel.feedback == .correct ? 1.1 : 1.0)
             .animation(.spring(response: 0.4, dampingFraction: 0.5),
                        value: viewModel.feedback)
 
             Text("How many do you see?")
-                .font(AppFonts.caption)
+                .font(AppFonts.body)
                 .foregroundStyle(AppColors.subtitle)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, AppSpacing.section)
+        .padding(.vertical, AppSpacing.section * 1.5)
         .background(AppColors.card)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
         .softShadow()
@@ -109,10 +113,10 @@ struct NumberQuizView: View {
             viewModel.select(value)
         } label: {
             Text("\(value)")
-                .font(.system(size: 52, weight: .heavy, design: .rounded))
+                .font(.system(size: 84, weight: .heavy, design: .rounded))
                 .foregroundStyle(foreground(for: value, answer: answer))
                 .frame(maxWidth: .infinity)
-                .frame(height: 100)
+                .frame(height: 150)
                 .background(background(for: value, answer: answer, tint: tint))
                 .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
                 .softShadow()

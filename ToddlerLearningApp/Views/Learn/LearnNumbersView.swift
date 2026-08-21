@@ -34,6 +34,7 @@ struct LearnNumbersView: View {
                 numberStrip
             }
             .padding(AppSpacing.screen)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
         .navigationTitle("Learn Numbers")
         .navigationBarTitleDisplayMode(.inline)
@@ -156,6 +157,6 @@ struct LearnNumbersView: View {
             }
             .padding(.horizontal, 2)
         }
-        .frame(maxHeight: 200)
+        .frame(maxHeight: .infinity)
     }
 }

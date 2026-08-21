@@ -30,6 +30,7 @@ struct LearnAlphabetView: View {
                 letterStrip
             }
             .padding(AppSpacing.screen)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
         .navigationTitle("Learn Letters")
         .navigationBarTitleDisplayMode(.inline)
@@ -149,6 +150,6 @@ struct LearnAlphabetView: View {
             }
             .padding(.horizontal, 2)
         }
-        .frame(maxHeight: 200)
+        .frame(maxHeight: .infinity)
     }
 }

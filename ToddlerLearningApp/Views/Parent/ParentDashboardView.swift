@@ -12,7 +12,21 @@ struct ParentDashboardView: View {
     @State private var viewModel: ParentDashboardViewModel
     private let coordinator: AppCoordinator
 
+    /// The dashboard is prose a parent may genuinely need at the largest
+    /// sizes, so it is deliberately not capped by `childScreenTypeSize()`.
+    /// The cost is that its side-by-side rows have to reflow themselves —
+    /// at AX5 an HStack squeezes "Mastered 0" down to "Mast/ered 0".
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private let masteryColumns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
+
+    /// Horizontal normally, stacked once text is large enough that a row of
+    /// items can no longer share the width.
+    private var adaptiveRow: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AppSpacing.tight))
+            : AnyLayout(HStackLayout(spacing: AppSpacing.element))
+    }
 
     init(viewModel: ParentDashboardViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
@@ -26,10 +40,12 @@ struct ParentDashboardView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: AppSpacing.element) {
                     summarySection
-                    masterySection
-                    practiceSection
-                    numbersMasterySection
-                    numbersPracticeSection
+
+                    ForEach(viewModel.summaries) { summary in
+                        masterySection(summary)
+                        practiceSection(summary)
+                    }
+
                     screenTimeSection
                     limitSection
                     privacyNote
@@ -61,7 +77,7 @@ struct ParentDashboardView: View {
 
     private var summarySection: some View {
         card {
-            HStack {
+            adaptiveRow {
                 Text(viewModel.child.avatarEmoji)
                     .font(.system(size: 44))
 
@@ -74,9 +90,10 @@ struct ParentDashboardView: View {
                         .foregroundStyle(AppColors.subtitle)
                 }
 
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
 
-                VStack(alignment: .trailing, spacing: 2) {
+                VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing,
+                       spacing: 2) {
                     Text("⭐️ \(viewModel.totalStars)")
                         .font(AppFonts.body)
                     Text("🔥 \(viewModel.streak) day streak")
@@ -87,101 +104,56 @@ struct ParentDashboardView: View {
         }
     }
 
-    private var masterySection: some View {
+    private func masterySection(_ summary: ParentDashboardViewModel.DomainSummary) -> some View {
         card {
             VStack(alignment: .leading, spacing: AppSpacing.tight) {
-                sectionTitle("Letter mastery")
+                sectionTitle(summary.title)
 
-                HStack(spacing: AppSpacing.element) {
-                    legend(color: AppColors.success, label: "Mastered \(viewModel.masteredCount)")
-                    legend(color: AppColors.warning, label: "Learning \(viewModel.learningCount)")
-                    legend(color: AppColors.disabledBackground, label: "New \(viewModel.notStartedCount)")
+                adaptiveRow {
+                    legend(color: AppColors.success, label: "Mastered \(summary.masteredCount)")
+                    legend(color: AppColors.warning, label: "Learning \(summary.learningCount)")
+                    legend(color: AppColors.disabledBackground, label: "New \(summary.notStartedCount)")
                 }
 
                 LazyVGrid(columns: masteryColumns, spacing: 8) {
-                    ForEach(viewModel.letters) { letter in
-                        Text(letter.uppercase)
+                    ForEach(summary.cells) { cell in
+                        let fill = color(for: cell.mastery)
+                        Text(cell.label)
+                            // Fixed on purpose: this is a colour-coded matrix,
+                            // and the meaning is carried by the cell colour and
+                            // the accessibility label below, not by the glyph
+                            // size. Scaling it bursts the grid without telling
+                            // the reader anything more.
                             .font(.system(size: 17, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(AppColors.ink(on: fill))
                             .frame(height: 40)
                             .frame(maxWidth: .infinity)
-                            .background(color(for: viewModel.mastery(for: letter)))
+                            .background(fill)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .accessibilityLabel("\(letter.uppercase): \(viewModel.mastery(for: letter).title)")
+                            .accessibilityLabel("\(cell.label): \(cell.mastery.title)")
                     }
                 }
             }
         }
     }
 
+    /// Surfaced so a parent has something concrete to do offline, which is what
+    /// the research says actually moves the needle.
     @ViewBuilder
-    private var practiceSection: some View {
-        if !viewModel.lettersNeedingPractice.isEmpty {
+    private func practiceSection(_ summary: ParentDashboardViewModel.DomainSummary) -> some View {
+        if !summary.needsPractice.isEmpty {
             card {
                 VStack(alignment: .leading, spacing: AppSpacing.tight) {
-                    sectionTitle("Worth practising together")
+                    sectionTitle(summary.practiceTitle)
 
-                    Text("These come up wrong most often. Pointing them out in books or on signs helps more than extra screen time.")
+                    Text(summary.practiceAdvice)
                         .font(AppFonts.caption)
                         .foregroundStyle(AppColors.subtitle)
 
                     HStack(spacing: AppSpacing.tight) {
-                        ForEach(viewModel.lettersNeedingPractice) { letter in
-                            Text(letter.uppercase)
-                                .font(.system(size: 20, weight: .heavy, design: .rounded))
-                                .foregroundStyle(AppColors.title)
-                                .frame(width: 44, height: 44)
-                                .background(AppColors.warning.opacity(0.25))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var numbersMasterySection: some View {
-        card {
-            VStack(alignment: .leading, spacing: AppSpacing.tight) {
-                sectionTitle("Number mastery")
-
-                HStack(spacing: AppSpacing.element) {
-                    legend(color: AppColors.success, label: "Mastered \(viewModel.masteredNumberCount)")
-                    legend(color: AppColors.warning, label: "Learning \(viewModel.learningNumberCount)")
-                    legend(color: AppColors.disabledBackground, label: "New \(viewModel.notStartedNumberCount)")
-                }
-
-                LazyVGrid(columns: masteryColumns, spacing: 8) {
-                    ForEach(viewModel.numbers) { number in
-                        Text("\(number.id)")
-                            .font(.system(size: 17, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .frame(height: 40)
-                            .frame(maxWidth: .infinity)
-                            .background(color(for: viewModel.mastery(for: number)))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .accessibilityLabel("\(number.id): \(viewModel.mastery(for: number).title)")
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var numbersPracticeSection: some View {
-        if !viewModel.numbersNeedingPractice.isEmpty {
-            card {
-                VStack(alignment: .leading, spacing: AppSpacing.tight) {
-                    sectionTitle("Numbers worth practising together")
-
-                    Text("These come up wrong most often. Counting things around the house helps more than extra screen time.")
-                        .font(AppFonts.caption)
-                        .foregroundStyle(AppColors.subtitle)
-
-                    HStack(spacing: AppSpacing.tight) {
-                        ForEach(viewModel.numbersNeedingPractice) { number in
-                            Text("\(number.id)")
-                                .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        ForEach(summary.needsPractice, id: \.self) { label in
+                            Text(label)
+                                .font(AppFonts.button.weight(.heavy))
                                 .foregroundStyle(AppColors.title)
                                 .frame(width: 44, height: 44)
                                 .background(AppColors.warning.opacity(0.25))
@@ -198,7 +170,7 @@ struct ParentDashboardView: View {
             VStack(alignment: .leading, spacing: AppSpacing.tight) {
                 sectionTitle("Screen time")
 
-                HStack {
+                adaptiveRow {
                     stat("\(viewModel.minutesToday)m", "today")
                     stat("\(viewModel.weeklyMinutes)m", "this week")
                     stat("\(viewModel.sessionCount)", "sessions")
@@ -222,8 +194,8 @@ struct ParentDashboardView: View {
                         .fill(AppColors.primary.opacity(minutes > 0 ? 0.8 : 0.15))
                         .frame(height: max(height, 4))
 
-                    Text(Self.weekdayFormatter.string(from: entry.date))
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                    Text(entry.date.formatted(.dateTime.weekday(.narrow)))
+                        .font(AppFonts.label)
                         .foregroundStyle(AppColors.subtitle)
                 }
             }
@@ -251,7 +223,7 @@ struct ParentDashboardView: View {
                 .pickerStyle(.segmented)
 
                 Text("The AAP suggests about an hour a day of high-quality screen time for ages 2–5.")
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .font(AppFonts.label.weight(.regular))
                     .foregroundStyle(AppColors.subtitle)
             }
         }
@@ -304,8 +276,9 @@ struct ParentDashboardView: View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .font(AppFonts.label)
                 .foregroundStyle(AppColors.subtitle)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -317,9 +290,4 @@ struct ParentDashboardView: View {
         }
     }
 
-    private static let weekdayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEEE"
-        return formatter
-    }()
 }

@@ -12,7 +12,6 @@ import SwiftUI
 struct ChildPickerView: View {
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \ChildProfile.createdAt, order: .forward)
     private var children: [ChildProfile]
@@ -84,13 +83,9 @@ struct ChildPickerView: View {
     }
 
     private func addChild() {
-        let trimmed = newName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-
-        let avatar = ChildFormFields.ageOptions.first { $0.age == newAge }?.animal ?? "🐰"
-        let child = ChildProfile(name: trimmed, age: newAge, avatarEmoji: avatar)
-        modelContext.insert(child)
-        try? modelContext.save()
+        guard !newName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        // Best-effort here; SettingsView is the screen that surfaces the error.
+        _ = try? coordinator.dependencies.childProfileService.create(name: newName, age: newAge)
 
         newName = ""
         newAge = 3

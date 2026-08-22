@@ -67,7 +67,7 @@ struct RewardsView: View {
                 .opacity(trophy.isUnlocked ? 1 : 0.35)
 
             Text(trophy.title)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(AppFonts.tileTitle)
                 .foregroundStyle(AppColors.title)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)

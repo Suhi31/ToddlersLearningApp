@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import OSLog
 import SwiftData
 
 struct Trophy: Identifiable, Hashable {
@@ -19,6 +20,11 @@ struct Trophy: Identifiable, Hashable {
     let detail: String
     let isUnlocked: Bool
 }
+
+/// Save failures are logged rather than surfaced: interrupting a child's
+/// session for a write that SwiftData will retry on its next autosave costs
+/// more than the failure does.
+private let logger = Logger(subsystem: "com.toddlerlearningapp", category: "rewards")
 
 @MainActor
 final class RewardService {
@@ -87,7 +93,15 @@ final class RewardService {
         let mastered = child.masteredCount
         let stars = child.starCount
         let streak = child.currentStreak
-        let total = child.unlockedLetters.count
+
+        // Graded against the *whole* alphabet, not `child.unlockedLetters`,
+        // which is age-gated to 10 letters under age 3. Grading against the
+        // gated slice meant a two-year-old earned "Alphabet Champion" at ten
+        // letters and then lost it on their third birthday, when the
+        // denominator jumped to 26 — a trophy that un-earns itself is exactly
+        // the punitive mechanic this service exists to avoid.
+        let total = AlphabetContent.letters.count
+        let totalNumbers = NumberContent.numbers.count
 
         return [
             Trophy(id: "first-star", title: "First Star", emoji: "⭐️",
@@ -113,8 +127,7 @@ final class RewardService {
                    isUnlocked: child.masteredNumberCount >= 5),
             Trophy(id: "all-numbers", title: "Number Whiz", emoji: "🧮",
                    detail: "Master every number",
-                   isUnlocked: !child.unlockedNumbers.isEmpty
-                       && child.masteredNumberCount >= child.unlockedNumbers.count),
+                   isUnlocked: totalNumbers > 0 && child.masteredNumberCount >= totalNumbers),
             Trophy(id: "streak-3", title: "Three in a Row", emoji: "🔥",
                    detail: "Play 3 days in a row",
                    isUnlocked: streak >= 3),
@@ -128,7 +141,7 @@ final class RewardService {
         do {
             try context.save()
         } catch {
-            print("RewardService save failed: \(error)")
+            logger.error("Save failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

@@ -24,11 +24,17 @@ enum QuizFeedbackState<Answer: Equatable>: Equatable {
 /// bare `Int`), and how the prompt sounds.
 protocol QuizDomain {
     associatedtype Question
-    associatedtype Selection
+    /// `Hashable` so the option grid can identify tiles by value rather than
+    /// by position — positional identity would morph one question's tiles into
+    /// the next question's instead of replacing them.
+    associatedtype Selection: Hashable
     associatedtype Answer: Equatable
 
     func answer(for question: Question) -> Answer
     func answer(for selection: Selection) -> Answer
+
+    /// The tappable options for a question, in display order.
+    func options(for question: Question) -> [Selection]
     func nextQuestion(for child: ChildProfile, excluding previous: Answer?) -> Question?
     func recordAnswer(child: ChildProfile, question: Question, correct: Bool)
     func promptSpeech(for question: Question) -> String
@@ -60,6 +66,11 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
 
     private var advanceTask: Task<Void, Never>?
 
+    // Explicitly empty, and it must stay. Removing it lets the compiler
+    // synthesise the deinit, and Swift 6.3.3's SIL optimizer then crashes in
+    // `EarlyPerfInliner` on that synthesised `deinit` when building with `-O`
+    // (Release). Debug builds are unaffected, so this only shows up in a
+    // release build. Re-test on a newer toolchain before deleting.
     deinit {}
 
     init(child: ChildProfile,
@@ -119,6 +130,22 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
         }
     }
 
+    /// The current question's options, or empty when there is nothing to ask.
+    var options: [Domain.Selection] {
+        question.map(domain.options(for:)) ?? []
+    }
+
+    /// The answer to the current question, for styling the revealed tile.
+    var currentAnswer: Domain.Answer? {
+        question.map(domain.answer(for:))
+    }
+
+    /// Maps what the child tapped to a comparable answer. Exposed so the view
+    /// can style a tile without re-deriving the domain's mapping itself.
+    func answer(for selection: Domain.Selection) -> Domain.Answer {
+        domain.answer(for: selection)
+    }
+
     func repeatPrompt() {
         guard let question else { return }
         speechService.speak(domain.promptSpeech(for: question))
@@ -161,6 +188,7 @@ struct LetterQuizDomain: QuizDomain {
 
     func answer(for question: QuizQuestion) -> String { question.answer.id }
     func answer(for selection: Letter) -> String { selection.id }
+    func options(for question: QuizQuestion) -> [Letter] { question.options }
 
     func nextQuestion(for child: ChildProfile, excluding previous: String?) -> QuizQuestion? {
         progressService.makeQuestion(for: child, excluding: previous)
@@ -216,6 +244,7 @@ struct NumberQuizDomain: QuizDomain {
 
     func answer(for question: NumberQuizQuestion) -> Int { question.answer.id }
     func answer(for selection: Int) -> Int { selection }
+    func options(for question: NumberQuizQuestion) -> [Int] { question.options }
 
     func nextQuestion(for child: ChildProfile, excluding previous: Int?) -> NumberQuizQuestion? {
         progressService.makeNumberQuestion(for: child, excluding: previous)

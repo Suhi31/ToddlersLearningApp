@@ -11,7 +11,13 @@
 //
 
 import Foundation
+import OSLog
 import SwiftData
+
+/// Save failures are logged rather than surfaced: interrupting a child's
+/// session for a write that SwiftData will retry on its next autosave costs
+/// more than the failure does.
+private let logger = Logger(subsystem: "com.toddlerlearningapp", category: "session")
 
 @MainActor
 @Observable
@@ -59,24 +65,58 @@ final class SessionTimerService {
         // magnitude but pollutes the dashboard's session count.
         guard !hasReachedLimit else { return }
 
-        let session = SessionRecord()
-        context.insert(session)
-        session.child = child
-        currentSession = session
+        // A session left open by `suspend()` is resumed rather than replaced.
+        // Opening a second record here would both inflate the session count and
+        // orphan the first one with no `endedAt`.
+        if currentSession == nil || currentSession?.child?.id != child.id {
+            closeCurrentSession()
+
+            let session = SessionRecord()
+            context.insert(session)
+            session.child = child
+            currentSession = session
+        }
 
         startTicker()
         isRunning = true
     }
 
+    /// The session is over: stop counting and close the record.
     func pause() {
         stopTicker()
         closeCurrentSession()
         isRunning = false
     }
 
+    /// Transiently interrupted: stop counting, but leave the record open so
+    /// returning a moment later continues the same session. See
+    /// `RootView.handle(_:)`.
+    func suspend() {
+        stopTicker()
+        isRunning = false
+    }
+
     func end() {
         pause()
         child = nil
+    }
+
+    // MARK: - Daily allowance
+
+    /// The daily allowance is the one setting a parent actively chooses, so it
+    /// is written through rather than left to SwiftData's autosave — losing it
+    /// to a force-quit silently disables the feature.
+    func setDailyLimit(_ minutes: Int, for child: ChildProfile) {
+        child.dailyLimitMinutes = minutes
+
+        // Lowering the limit below what's already been played should take
+        // effect now rather than at the next tick, and raising it should clear
+        // a limit that had already been reached.
+        if child.id == self.child?.id {
+            evaluateLimit()
+        }
+
+        save()
     }
 
     // MARK: - Ticking
@@ -105,6 +145,7 @@ final class SessionTimerService {
     private func evaluateLimit() {
         guard hasLimit else {
             hasReachedLimit = false
+            resumeTickerIfNeeded()
             return
         }
         if secondsPlayedToday >= limitSeconds {
@@ -112,14 +153,35 @@ final class SessionTimerService {
             stopTicker()
         } else {
             hasReachedLimit = false
+            resumeTickerIfNeeded()
         }
+    }
+
+    /// The ticker is stopped when the allowance runs out. If the allowance is
+    /// later raised or switched off from the parent dashboard, counting has to
+    /// pick up again or the rest of the session goes unrecorded.
+    ///
+    /// Deliberately a no-op unless a session is already running, so the
+    /// `evaluateLimit()` inside `begin(for:)` — which runs before `isRunning`
+    /// is set — doesn't start the ticker behind `begin`'s back.
+    private func resumeTickerIfNeeded() {
+        guard isRunning, ticker == nil else { return }
+        startTicker()
     }
 
     private func closeCurrentSession() {
         guard let session = currentSession else { return }
         session.endedAt = .now
         currentSession = nil
-        try? context.save()
+        save()
+    }
+
+    private func save() {
+        do {
+            try context.save()
+        } catch {
+            logger.error("Save failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Reporting

@@ -34,6 +34,11 @@ final class BrowsingViewModel<Item: Equatable> {
 
     private var speechTask: Task<Void, Never>?
 
+    // Explicitly empty, and it must stay. Removing it lets the compiler
+    // synthesise the deinit, and Swift 6.3.3's SIL optimizer then crashes in
+    // `EarlyPerfInliner` on that synthesised `deinit` when building with `-O`
+    // (Release). Debug builds are unaffected, so this only shows up in a
+    // release build. Re-test on a newer toolchain before deleting.
     deinit {}
 
     init(child: ChildProfile,

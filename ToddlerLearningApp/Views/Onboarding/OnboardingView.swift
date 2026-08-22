@@ -48,7 +48,9 @@ struct OnboardingView: View {
                         isEnabled: viewModel.canContinue
                     ) {
                         isNameFocused = false
-                        coordinator.start(with: viewModel.createProfile())
+                        if let child = viewModel.createProfile() {
+                            coordinator.start(with: child)
+                        }
                     }
 
                     // Set expectations with the parent before anything is stored.
@@ -108,10 +110,7 @@ struct OnboardingView: View {
 #Preview {
     let dependencies = AppDependencies.preview()
     return OnboardingView(
-        viewModel: OnboardingViewModel(
-            modelContext: dependencies.modelContext,
-            progressService: dependencies.progressService
-        ),
+        viewModel: OnboardingViewModel(childProfileService: dependencies.childProfileService),
         coordinator: AppCoordinator(dependencies: dependencies)
     )
 }

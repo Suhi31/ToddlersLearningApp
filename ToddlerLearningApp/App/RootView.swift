@@ -32,8 +32,7 @@ struct RootView: View {
             } else {
                 OnboardingView(
                     viewModel: OnboardingViewModel(
-                        modelContext: coordinator.dependencies.modelContext,
-                        progressService: coordinator.dependencies.progressService
+                        childProfileService: coordinator.dependencies.childProfileService
                     ),
                     coordinator: coordinator
                 )
@@ -97,7 +96,13 @@ struct RootView: View {
         switch phase {
         case .active:
             coordinator.resumeSession()
-        case .inactive, .background:
+        case .inactive:
+            // Transient: an app-switcher peek, a Control Centre pull, an
+            // incoming call banner. iOS emits this constantly, so closing the
+            // session record here made the dashboard's session count a tally
+            // of interruptions rather than of play sessions.
+            coordinator.suspendSession()
+        case .background:
             // Only foreground time counts against the daily allowance.
             coordinator.endSession()
         @unknown default:

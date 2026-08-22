@@ -95,7 +95,7 @@ struct HomeView: View {
                     coordinator.openParentArea()
                 } label: {
                     Image(systemName: "person.2.fill")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(AppFonts.body.weight(.bold))
                 }
                 .accessibilityLabel("Parents")
             }
@@ -168,14 +168,14 @@ struct HomeView: View {
                 HStack(spacing: AppSpacing.element) {
                     Text(letter.uppercase)
                         .font(.system(size: 38, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppColors.ink(on: tint))
                         .frame(width: 64, height: 64)
                         .background(tint)
                         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.tileCornerRadius))
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("LETTER OF THE DAY")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .font(AppFonts.labelBold)
                             .foregroundStyle(AppColors.subtitle)
 
                         Text("\(letter.uppercase) is for \(letter.word)")
@@ -189,7 +189,7 @@ struct HomeView: View {
                         .font(.system(size: 34))
 
                     Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(AppFonts.caption.weight(.bold))
                         .foregroundStyle(tint)
                 }
                 .padding(AppSpacing.element)

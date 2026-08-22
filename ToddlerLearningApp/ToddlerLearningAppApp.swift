@@ -12,21 +12,45 @@ import SwiftUI
 struct ToddlerLearningAppApp: App {
 
     private let modelContainer: ModelContainer
+
+    /// True when the on-disk store couldn't be opened and the app fell back to
+    /// an in-memory one. Progress made this session will not survive relaunch,
+    /// which is worth telling the parent rather than silently losing.
+    private let isUsingFallbackStore: Bool
+
     @State private var dependencies: AppDependencies
 
     init() {
-        let container: ModelContainer
+        let (container, isFallback) = Self.makeContainer()
+        self.modelContainer = container
+        self.isUsingFallbackStore = isFallback
+        _dependencies = State(initialValue: AppDependencies(modelContext: container.mainContext))
+    }
+
+    /// A corrupt store or a failed migration used to be a `fatalError` here,
+    /// which turns a recoverable data problem into a permanent launch crash —
+    /// the app never opens again and a parent has no way out short of
+    /// deleting it. Falling back to an in-memory container keeps every screen
+    /// working and lets the UI say what happened.
+    private static func makeContainer() -> (ModelContainer, Bool) {
+        let schema = Schema([
+            ChildProfile.self, LetterProgress.self, NumberProgress.self, SessionRecord.self
+        ])
+
         do {
-            container = try ModelContainer(
-                for: ChildProfile.self, LetterProgress.self, NumberProgress.self, SessionRecord.self
-            )
+            return (try ModelContainer(for: schema), false)
         } catch {
-            // Without a store there is no app — every screen is progress-driven.
-            fatalError("Failed to create the SwiftData container: \(error)")
+            print("Persistent store unavailable, falling back to in-memory: \(error)")
         }
 
-        self.modelContainer = container
-        _dependencies = State(initialValue: AppDependencies(modelContext: container.mainContext))
+        do {
+            let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            return (try ModelContainer(for: schema, configurations: configuration), true)
+        } catch {
+            // An in-memory container failing means the schema itself is
+            // invalid — a programmer error, not a runtime condition.
+            preconditionFailure("Failed to create even an in-memory container: \(error)")
+        }
     }
 
     var body: some Scene {
@@ -41,6 +65,11 @@ struct ToddlerLearningAppApp: App {
                 // on a dark row). Pinning the whole app to light keeps every
                 // screen consistent with the one theme it's actually designed for.
                 .preferredColorScheme(.light)
+                .overlay(alignment: .top) {
+                    if isUsingFallbackStore {
+                        StorageWarningBanner()
+                    }
+                }
         }
         .modelContainer(modelContainer)
     }

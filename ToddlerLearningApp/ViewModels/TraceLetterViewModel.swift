@@ -19,17 +19,26 @@ import SwiftUI
 @Observable
 final class TraceLetterViewModel {
 
-    static let canvasSize: CGFloat = 320
+    /// The on-screen edge length of the tracing canvas, set by the view from
+    /// the space it actually has. Defaults to the old fixed 320 so the view
+    /// model is usable before the first layout pass reports a size.
+    private(set) var canvasSize: CGFloat = 320
 
-    /// How close a touch must land to the next checkpoint to count, in points
-    /// on a 320pt canvas — wide relative to the 16pt ink stroke width, since
-    /// toddler finger placement is imprecise.
-    private static let waypointRadius: CGFloat = 34
+    /// How close a touch must land to the next checkpoint to count, as a
+    /// fraction of the canvas edge — wide relative to the ink stroke width,
+    /// since toddler finger placement is imprecise. Proportional rather than a
+    /// fixed point value so the tolerance feels the same on a 280pt phone
+    /// canvas as on a 420pt iPad one; the ratios preserve the 34pt and 90pt
+    /// that were hand-tuned against the original 320pt canvas.
+    private static let waypointRadiusRatio: CGFloat = 34.0 / 320.0
 
     /// Points farther than this from the current stroke's path are ignored
     /// entirely, so a scribble far from the letter can't rack up checkpoints
-    /// it never actually traced.
-    private static let maxDeviation: CGFloat = 90
+    /// it never actually traced. Proportional for the same reason as above.
+    private static let maxDeviationRatio: CGFloat = 90.0 / 320.0
+
+    private var waypointRadius: CGFloat { canvasSize * Self.waypointRadiusRatio }
+    private var maxDeviation: CGFloat { canvasSize * Self.maxDeviationRatio }
 
     private(set) var currentIndex: Int = 0
     private(set) var strokePath = Path()
@@ -114,6 +123,26 @@ final class TraceLetterViewModel {
         speechService.stop()
     }
 
+    /// Speaks the current letter again. Exposed for the canvas's VoiceOver
+    /// action: a VoiceOver user gets nothing from the dotted visual guide, so
+    /// hearing which letter is being traced is the only way in.
+    func speakCurrentLetter() {
+        guard let currentLetter else { return }
+        speechService.speak("Trace the letter \(currentLetter.uppercase)")
+    }
+
+    /// Called by the view once it knows how much room it actually has. Every
+    /// sampled coordinate is in canvas space, so a size change invalidates the
+    /// geometry and any half-drawn stroke — but it must not re-speak the
+    /// letter, since this is a layout event, not a navigation one.
+    func updateCanvasSize(_ size: CGFloat) {
+        let resolved = max(size, 1)
+        guard abs(resolved - canvasSize) > 0.5 else { return }
+        canvasSize = resolved
+        rebuildGeometry()
+        clear()
+    }
+
     func next() {
         guard canGoForward else { return }
         currentIndex += 1
@@ -173,18 +202,23 @@ final class TraceLetterViewModel {
 
     private func setUpCurrentLetter() {
         guard let currentLetter else { return }
-        geometry = TracePathSampler.geometry(for: currentLetter.id, canvasSize: Self.canvasSize)
-        totalWaypoints = geometry?.strokes.reduce(0) { $0 + $1.waypoints.count } ?? 0
+        rebuildGeometry()
         clear()
         speechService.speak("Trace the letter \(currentLetter.uppercase)")
     }
 
+    private func rebuildGeometry() {
+        guard let currentLetter else { return }
+        geometry = TracePathSampler.geometry(for: currentLetter.id, canvasSize: canvasSize)
+        totalWaypoints = geometry?.strokes.reduce(0) { $0 + $1.waypoints.count } ?? 0
+    }
+
     private func registerTouch(_ point: CGPoint, stroke: TraceStrokeGeometry) {
         guard nextWaypointIndex < stroke.waypoints.count else { return }
-        guard nearestDistance(from: point, in: stroke.densePoints) <= Self.maxDeviation else { return }
+        guard nearestDistance(from: point, in: stroke.densePoints) <= maxDeviation else { return }
 
         let target = stroke.waypoints[nextWaypointIndex]
-        guard squaredDistance(point, target) <= Self.waypointRadius * Self.waypointRadius else { return }
+        guard squaredDistance(point, target) <= waypointRadius * waypointRadius else { return }
 
         nextWaypointIndex += 1
         visitedWaypoints += 1

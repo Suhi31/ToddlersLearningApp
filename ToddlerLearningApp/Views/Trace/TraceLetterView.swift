@@ -19,20 +19,32 @@ struct TraceLetterView: View {
         ZStack {
             GradientBackground()
 
-            VStack(spacing: AppSpacing.element) {
-                if let letter = viewModel.currentLetter {
-                    header(letter)
-                    canvas(letter)
-                    ProgressBar(value: viewModel.coverage, tint: AppColors.paletteColor(letter.colorIndex))
-                    controls
-                }
+            GeometryReader { geometry in
+                let edge = Self.canvasEdge(fitting: geometry.size)
 
-                Spacer(minLength: 0)
+                VStack(spacing: AppSpacing.element) {
+                    if let letter = viewModel.currentLetter {
+                        header(letter)
+                        canvas(letter, edge: edge)
+                        ProgressBar(value: viewModel.coverage, tint: AppColors.paletteColor(letter.colorIndex))
+                        controls
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(AppSpacing.screen)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // The view model samples its checkpoint geometry in canvas
+                // space, so it has to be told the real edge length — a
+                // hardcoded one both clipped on small phones and left the
+                // canvas postage-stamp sized on iPad.
+                .onAppear { viewModel.updateCanvasSize(edge) }
+                .onChange(of: edge) { _, newEdge in viewModel.updateCanvasSize(newEdge) }
             }
-            .padding(AppSpacing.screen)
 
             StarBurstView(isActive: viewModel.isComplete)
         }
+        .childScreenTypeSize()
         .navigationTitle("Trace Letters")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -43,21 +55,14 @@ struct TraceLetterView: View {
     }
 
     private func header(_ letter: Letter) -> some View {
-        HStack {
-            Button {
-                viewModel.previous()
-            } label: {
-                Image(systemName: "chevron.left.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(viewModel.canGoBack ? AppColors.primary : AppColors.disabledIcon)
-                    .frame(width: AppSpacing.minimumTapTarget, height: AppSpacing.minimumTapTarget)
-                    .contentShape(Rectangle())
-            }
-            .disabled(!viewModel.canGoBack)
-            .accessibilityLabel("Previous letter")
-
-            Spacer()
-
+        ArrowNavBar(
+            canGoBack: viewModel.canGoBack,
+            canGoForward: viewModel.canGoForward,
+            itemNoun: "letter",
+            iconSize: 36,
+            onBack: { viewModel.previous() },
+            onForward: { viewModel.next() }
+        ) {
             VStack(spacing: 2) {
                 Text(letter.uppercase)
                     .font(AppFonts.heading)
@@ -66,26 +71,26 @@ struct TraceLetterView: View {
                     .font(AppFonts.caption)
                     .foregroundStyle(AppColors.subtitle)
             }
-
-            Spacer()
-
-            Button {
-                viewModel.next()
-            } label: {
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(viewModel.canGoForward ? AppColors.primary : AppColors.disabledIcon)
-                    .frame(width: AppSpacing.minimumTapTarget, height: AppSpacing.minimumTapTarget)
-                    .contentShape(Rectangle())
-            }
-            .disabled(!viewModel.canGoForward)
-            .accessibilityLabel("Next letter")
         }
     }
 
-    private func canvas(_ letter: Letter) -> some View {
+    /// The canvas is square and shares the screen with the header, progress bar
+    /// and controls stacked beneath it. Capped so it doesn't balloon on iPad,
+    /// floored so a transiently tiny or zero geometry can't produce a negative
+    /// frame during a push transition.
+    private static func canvasEdge(fitting size: CGSize) -> CGFloat {
+        let availableWidth = size.width - AppSpacing.screen * 2
+        let availableHeight = size.height - chromeHeight
+        return min(max(min(availableWidth, availableHeight), 200), 420)
+    }
+
+    /// Header, progress bar, controls, the spacing between them, and the screen
+    /// padding — everything the canvas has to share the screen with.
+    private static let chromeHeight: CGFloat = 220
+
+    private func canvas(_ letter: Letter, edge: CGFloat) -> some View {
         let tint = AppColors.paletteColor(letter.colorIndex)
-        let size = TraceLetterViewModel.canvasSize
+        let size = edge
 
         return ZStack {
             RoundedRectangle(cornerRadius: AppSpacing.cornerRadius)
@@ -151,6 +156,17 @@ struct TraceLetterView: View {
         )
         .animation(.spring(response: 0.4, dampingFraction: 0.6), value: viewModel.isComplete)
         .accessibilityLabel("Trace the letter \(letter.uppercase) with your finger")
+        // Without this trait VoiceOver swallows the drag for its own
+        // navigation and the activity is simply unusable with it turned on.
+        // `.allowsDirectInteraction` hands raw touches to the canvas instead.
+        .accessibilityAddTraits(.allowsDirectInteraction)
+        .accessibilityValue("\(Int(viewModel.coverage * 100)) percent traced")
+        .accessibilityHint("Drag along the dotted guide")
+        .accessibilityAction(named: "Hear the letter") { viewModel.speakCurrentLetter() }
+        // Centring goes *after* the gesture: applied before it, the drag would
+        // report locations in the full-width frame's space rather than the
+        // canvas's, offsetting every touch by the left margin.
+        .frame(maxWidth: .infinity)
     }
 
     private var controls: some View {

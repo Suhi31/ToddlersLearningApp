@@ -15,6 +15,7 @@ final class AppDependencies {
     let modelContext: ModelContext
     let speechService: SpeechServicing
     let progressService: ProgressService
+    let childProfileService: ChildProfileService
     let rewardService: RewardService
     let sessionTimer: SessionTimerService
     let haptics: HapticsService
@@ -27,6 +28,7 @@ final class AppDependencies {
         // with none bundled yet, this behaves identically to `SpeechService()`.
         self.speechService = RecordedSpeechService(fallback: SpeechService())
         self.progressService = ProgressService(context: modelContext)
+        self.childProfileService = ChildProfileService(context: modelContext)
         self.rewardService = RewardService(context: modelContext)
         self.sessionTimer = SessionTimerService(context: modelContext)
         self.haptics = HapticsService()

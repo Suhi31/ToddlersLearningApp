@@ -15,9 +15,23 @@ struct SectionCard: View {
     let color: Color
     let action: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// The emoji medallion and chevron are a fixed ~100pt of the row's width.
+    /// At accessibility text sizes that leaves so little for the label that
+    /// "Learn Letters" hyphenates to "Learn Let-", so the card stacks instead
+    /// and hands the full width to the text.
+    private var isStacked: Bool { dynamicTypeSize.isAccessibilitySize }
+
+    private var layout: AnyLayout {
+        isStacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AppSpacing.tight))
+            : AnyLayout(HStackLayout(spacing: AppSpacing.element))
+    }
+
     var body: some View {
         Button(action: action) {
-            HStack(spacing: AppSpacing.element) {
+            layout {
                 Text(emoji)
                     .font(.system(size: 46))
                     .frame(width: 68, height: 68)
@@ -34,12 +48,15 @@ struct SectionCard: View {
                         .foregroundStyle(AppColors.subtitle)
                 }
 
-                Spacer(minLength: 0)
+                if !isStacked {
+                    Spacer(minLength: 0)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(color)
+                    Image(systemName: "chevron.right")
+                        .font(AppFonts.body.weight(.bold))
+                        .foregroundStyle(color)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(AppSpacing.element)
             .background(AppColors.card)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))

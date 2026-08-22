@@ -8,7 +8,13 @@
 //
 
 import Foundation
+import OSLog
 import SwiftData
+
+/// Save failures are logged rather than surfaced: interrupting a child's
+/// session for a write that SwiftData will retry on its next autosave costs
+/// more than the failure does.
+private let logger = Logger(subsystem: "com.toddlerlearningapp", category: "progress")
 
 @MainActor
 final class ProgressService {
@@ -192,7 +198,7 @@ final class ProgressService {
         } catch {
             // A failed save is not worth interrupting a child's session for;
             // SwiftData will retry on the next autosave.
-            print("ProgressService save failed: \(error)")
+            logger.error("Save failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

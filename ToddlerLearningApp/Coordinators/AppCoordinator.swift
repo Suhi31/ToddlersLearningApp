@@ -20,6 +20,10 @@ final class AppCoordinator: Coordinator {
     /// `checkTimeLimitAtSafePoint()`.
     var showTimeUp = false
 
+    /// Set when the child dismisses the wind-down, cleared once the allowance
+    /// is no longer exhausted. See `checkTimeLimitAtSafePoint()`.
+    private var hasAcknowledgedTimeUp = false
+
     /// `nil` until onboarding completes or a saved profile is loaded.
     private(set) var activeChild: ChildProfile?
 
@@ -37,6 +41,7 @@ final class AppCoordinator: Coordinator {
 
     func start(with child: ChildProfile) {
         activeChild = child
+        hasAcknowledgedTimeUp = false
         Self.persistLastActiveChildID(child.id)
         dependencies.rewardService.registerPlay(for: child)
         dependencies.sessionTimer.begin(for: child)
@@ -60,8 +65,16 @@ final class AppCoordinator: Coordinator {
         popToRoot()
     }
 
+    /// Backgrounded — the play session is genuinely over.
     func endSession() {
         dependencies.sessionTimer.pause()
+    }
+
+    /// Transiently interrupted (app-switcher peek, Control Centre, a banner).
+    /// Stops counting time but leaves the session record open, so a quick
+    /// return resumes it instead of opening a second one.
+    func suspendSession() {
+        dependencies.sessionTimer.suspend()
     }
 
     func resumeSession() {
@@ -75,12 +88,23 @@ final class AppCoordinator: Coordinator {
     /// questions, on returning to Home — never mid-activity. That is the whole
     /// point of spec F5: the allowance ends the session, it doesn't interrupt it.
     func checkTimeLimitAtSafePoint() {
-        guard dependencies.sessionTimer.hasReachedLimit else { return }
+        guard dependencies.sessionTimer.hasReachedLimit else {
+            // The allowance is no longer exhausted — a new day, or a parent
+            // raising the limit. Re-arm the wind-down for next time.
+            hasAcknowledgedTimeUp = false
+            return
+        }
+        guard !hasAcknowledgedTimeUp else { return }
         showTimeUp = true
     }
 
     func dismissTimeUp() {
         showTimeUp = false
+        // `popToRoot` makes Home re-appear, and Home checks the allowance on
+        // appear — without this flag, dismissing from any pushed screen
+        // re-presented the very screen just dismissed, so "All done" read as a
+        // broken button.
+        hasAcknowledgedTimeUp = true
         popToRoot()
     }
 
@@ -215,6 +239,12 @@ final class AppCoordinator: Coordinator {
                     ),
                     coordinator: self
                 )
+            } else {
+                // Every other case in this switch is total. Without this one a
+                // rhyme id that no longer resolves pushes a blank screen the
+                // child can only back out of.
+                ContentUnavailableView("That rhyme isn't here",
+                                       systemImage: "music.note")
             }
 
         case .rewards:

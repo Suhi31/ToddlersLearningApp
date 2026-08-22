@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import SwiftData
 
 @MainActor
 @Observable
@@ -15,12 +14,10 @@ final class OnboardingViewModel {
 
     var ageOptions: [(age: Int, animal: String)] { ChildFormFields.ageOptions }
 
-    private let modelContext: ModelContext
-    private let progressService: ProgressService
+    private let childProfileService: ChildProfileService
 
-    init(modelContext: ModelContext, progressService: ProgressService) {
-        self.modelContext = modelContext
-        self.progressService = progressService
+    init(childProfileService: ChildProfileService) {
+        self.childProfileService = childProfileService
     }
 
     var trimmedName: String {
@@ -37,21 +34,10 @@ final class OnboardingViewModel {
         ageOptions.first { $0.age == selectedAge }?.animal ?? "🐰"
     }
 
-    /// Creates and persists the profile, seeding progress rows for the letters
-    /// unlocked at this age so the dashboard has something to show immediately.
-    func createProfile() -> ChildProfile {
-        let child = ChildProfile(
-            name: trimmedName,
-            age: selectedAge,
-            avatarEmoji: avatarForSelectedAge
-        )
-        modelContext.insert(child)
-
-        for letter in AlphabetContent.unlockedLetters(forAge: selectedAge) {
-            progressService.progress(for: child, letterID: letter.id)
-        }
-
-        try? modelContext.save()
-        return child
+    /// Creates and persists the profile. Returns `nil` only if the store
+    /// refuses the write, in which case the caller stays on onboarding rather
+    /// than navigating into a session with no child behind it.
+    func createProfile() -> ChildProfile? {
+        try? childProfileService.create(name: trimmedName, age: selectedAge)
     }
 }

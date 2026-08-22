@@ -159,17 +159,11 @@ struct SettingsView: View {
     // MARK: - Add
 
     private func addChild() {
-        let trimmed = newName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-
-        let avatar = ChildFormFields.ageOptions.first { $0.age == newAge }?.animal ?? "🐰"
-        let child = ChildProfile(name: trimmed, age: newAge, avatarEmoji: avatar)
-        modelContext.insert(child)
+        guard !newName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
         do {
-            try modelContext.save()
+            try coordinator.dependencies.childProfileService.create(name: newName, age: newAge)
         } catch {
-            modelContext.delete(child)
             saveErrorMessage = "Couldn't add that child. Please try again."
             return
         }

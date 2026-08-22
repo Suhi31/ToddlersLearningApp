@@ -14,9 +14,13 @@
 //  the UI, only produce silence.
 //
 //  This service only knows about audio playback. Silencing any in-flight
-//  SpeechService utterance before a rhyme starts is RhymesViewModel's job —
-//  it already holds both services, so that coordination belongs there rather
+//  SpeechService utterance before a rhyme starts is RhymeDetailViewModel's job
+//  — it already holds both services, so that coordination belongs there rather
 //  than as a dependency between two otherwise-unrelated leaf services.
+//
+//  `@Observable` so `isPlaying`/`progress` drive SwiftUI directly. Before, the
+//  detail view model polled these five times a second for the whole time the
+//  screen was open, playing or not, purely because this type wasn't observable.
 //
 
 import AVFoundation
@@ -28,6 +32,8 @@ protocol RhymeAudioPlaying: AnyObject {
     /// 0...1 through the current track, for a scrub bar and line-highlight
     /// approximation in the detail view.
     var progress: Double { get }
+    /// Called when a track ends of its own accord. See the implementation.
+    var onFinished: (() -> Void)? { get set }
     func play(_ rhyme: Rhyme)
     func pause()
     func resume()
@@ -35,13 +41,19 @@ protocol RhymeAudioPlaying: AnyObject {
 }
 
 @MainActor
+@Observable
 final class RhymeAudioService: NSObject, RhymeAudioPlaying {
 
     private(set) var isPlaying = false
     private(set) var progress: Double = 0
 
-    private var player: AVAudioPlayer?
-    private var progressTimer: Timer?
+    /// Fired when a track reaches its natural end — not on `pause()` or an
+    /// explicit `stop()`. This is what the detail view model used to infer by
+    /// watching for a playing→stopped-at-zero transition through its poll loop.
+    @ObservationIgnored var onFinished: (() -> Void)?
+
+    @ObservationIgnored private var player: AVAudioPlayer?
+    @ObservationIgnored private var progressTimer: Timer?
 
     func play(_ rhyme: Rhyme) {
         let name = rhyme.audioFileName as NSString
@@ -115,7 +127,9 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
 extension RhymeAudioService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in
-            self?.stop()
+            guard let self else { return }
+            stop()
+            onFinished?()
         }
     }
 }

@@ -79,7 +79,7 @@ struct RhymeDetailView: View {
                 systemImage: viewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill"
             )
             .font(AppFonts.button)
-            .foregroundStyle(.white)
+            .foregroundStyle(AppColors.ink(on: tint))
             .frame(maxWidth: .infinity)
             .frame(height: AppSpacing.minimumTapTarget)
             .background(tint)

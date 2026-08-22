@@ -16,7 +16,7 @@ struct PrimaryButton: View {
         Button(action: action) {
             Text(title)
                 .font(AppFonts.button)
-                .foregroundStyle(.white)
+                .foregroundStyle(AppColors.ink(on: isEnabled ? color : AppColors.disabledBackground))
                 .frame(maxWidth: .infinity)
                 .frame(height: AppSpacing.minimumTapTarget)
                 .background(isEnabled ? color : AppColors.disabledBackground)

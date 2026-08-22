@@ -24,69 +24,83 @@ final class ParentDashboardViewModel {
 
     // MARK: - Mastery
 
-    var letters: [Letter] { child.unlockedLetters }
+    /// One domain's mastery picture, built once and rendered by a single
+    /// generic section. The letters and numbers halves of this dashboard were
+    /// four near-identical view blocks over eight near-identical accessors.
+    struct DomainSummary: Identifiable {
 
-    func mastery(for letter: Letter) -> MasteryLevel {
-        child.progress(for: letter.id)?.mastery ?? .new
+        let id: String
+
+        /// Section heading, e.g. "Letter mastery".
+        let title: String
+
+        /// Heading for the practice card, and its parent-facing advice.
+        let practiceTitle: String
+        let practiceAdvice: String
+
+        /// The grid cells, in display order.
+        let cells: [Cell]
+
+        let masteredCount: Int
+        let learningCount: Int
+        let notStartedCount: Int
+
+        /// The items worth practising together, already ranked worst-first.
+        let needsPractice: [String]
+
+        struct Cell: Identifiable {
+            let id: String
+            let label: String
+            let mastery: MasteryLevel
+        }
     }
 
-    func accuracy(for letter: Letter) -> Double {
-        child.progress(for: letter.id)?.accuracy ?? 0
+    var letterSummary: DomainSummary {
+        let letters = child.unlockedLetters
+        let mastery = { (letter: Letter) in self.child.progress(for: letter.id)?.mastery ?? .new }
+
+        return DomainSummary(
+            id: "letters",
+            title: "Letter mastery",
+            practiceTitle: "Worth practising together",
+            practiceAdvice: "These come up wrong most often. Pointing them out in books or on signs helps more than extra screen time.",
+            cells: letters.map { .init(id: $0.id, label: $0.uppercase, mastery: mastery($0)) },
+            masteredCount: child.masteredUnlockedCount,
+            learningCount: letters.count { mastery($0) == .learning },
+            // Counted from the currently-unlocked set rather than by
+            // subtracting the other two — stored progress is not age-gated,
+            // so a parent lowering a child's age used to drive this negative.
+            notStartedCount: letters.count { mastery($0) == .new },
+            needsPractice: child.progress
+                .filter { $0.attempts >= 2 && $0.accuracy < 0.6 }
+                .sorted { $0.accuracy < $1.accuracy }
+                .prefix(5)
+                .compactMap { $0.letter?.uppercase }
+        )
     }
 
-    var masteredCount: Int { child.masteredCount }
+    var numberSummary: DomainSummary {
+        let numbers = child.unlockedNumbers
+        let mastery = { (number: NumberItem) in self.child.numberProgress(for: number.id)?.mastery ?? .new }
 
-    var learningCount: Int {
-        child.progress.count { $0.mastery == .learning }
+        return DomainSummary(
+            id: "numbers",
+            title: "Number mastery",
+            practiceTitle: "Numbers worth practising together",
+            practiceAdvice: "These come up wrong most often. Counting things around the house helps more than extra screen time.",
+            cells: numbers.map { .init(id: "\($0.id)", label: "\($0.id)", mastery: mastery($0)) },
+            masteredCount: child.masteredUnlockedNumberCount,
+            learningCount: numbers.count { mastery($0) == .learning },
+            notStartedCount: numbers.count { mastery($0) == .new },
+            needsPractice: child.numberProgress
+                .filter { $0.attempts >= 2 && $0.accuracy < 0.6 }
+                .sorted { $0.accuracy < $1.accuracy }
+                .prefix(5)
+                .compactMap { $0.number.map { number in "\(number.id)" } }
+        )
     }
 
-    /// Computed directly from the currently-unlocked set rather than by
-    /// subtracting `masteredCount`/`learningCount` — those two are counted
-    /// across *all* progress records regardless of age, so a parent lowering
-    /// the child's age after some letters were mastered at a higher age used
-    /// to drive this negative.
-    var notStartedCount: Int {
-        letters.count { mastery(for: $0) == .new }
-    }
-
-    /// The letters worth practising together — surfaced so a parent has
-    /// something concrete to do offline, which is what the research says
-    /// actually moves the needle.
-    var lettersNeedingPractice: [Letter] {
-        child.progress
-            .filter { $0.attempts >= 2 && $0.accuracy < 0.6 }
-            .sorted { $0.accuracy < $1.accuracy }
-            .prefix(5)
-            .compactMap(\.letter)
-    }
-
-    // MARK: - Numbers mastery
-
-    var numbers: [NumberItem] { child.unlockedNumbers }
-
-    func mastery(for number: NumberItem) -> MasteryLevel {
-        child.numberProgress(for: number.id)?.mastery ?? .new
-    }
-
-    var masteredNumberCount: Int { child.masteredNumberCount }
-
-    var learningNumberCount: Int {
-        child.numberProgress.count { $0.mastery == .learning }
-    }
-
-    /// Numbers-domain twin of `notStartedCount` — same reasoning applies.
-    var notStartedNumberCount: Int {
-        numbers.count { mastery(for: $0) == .new }
-    }
-
-    /// Numbers-domain twin of `lettersNeedingPractice`.
-    var numbersNeedingPractice: [NumberItem] {
-        child.numberProgress
-            .filter { $0.attempts >= 2 && $0.accuracy < 0.6 }
-            .sorted { $0.accuracy < $1.accuracy }
-            .prefix(5)
-            .compactMap(\.number)
-    }
+    var summaries: [DomainSummary] { [letterSummary, numberSummary] }
 
     // MARK: - Time
 
@@ -102,9 +116,12 @@ final class ParentDashboardViewModel {
         weeklyTotals.reduce(0) { $0 + $1.seconds } / 60
     }
 
+    /// Written through `SessionTimerService` rather than set directly on the
+    /// model: this is the one setting a parent actively chooses, and a bare
+    /// assignment left it to autosave, where a force-quit could lose it.
     var dailyLimitMinutes: Int {
         get { child.dailyLimitMinutes }
-        set { child.dailyLimitMinutes = newValue }
+        set { sessionTimer.setDailyLimit(newValue, for: child) }
     }
 
     func limitLabel(_ minutes: Int) -> String {

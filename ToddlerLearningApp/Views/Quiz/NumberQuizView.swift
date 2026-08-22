@@ -4,7 +4,8 @@
 //
 //  Numbers-domain twin of QuizView. The prompt is a grid of repeated emoji to
 //  count rather than a single picture, since the question is "how many?" not
-//  "which letter?".
+//  "which letter?" — and that difference is now the only thing this file
+//  carries; the rest is QuizScreen.
 //
 
 import SwiftUI
@@ -14,11 +15,14 @@ struct NumberQuizView: View {
     @State private var viewModel: NumberQuizViewModel
     private let coordinator: AppCoordinator
 
-    private let optionColumns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
-    // Adaptive, not a fixed 5-across grid, so items get room to breathe and grow
-    // instead of packing edge-to-edge once the count climbs toward 10 — cramped
-    // items are hard for a toddler to visually separate while counting.
-    private let promptColumns = [GridItem(.adaptive(minimum: 80, maximum: 120), spacing: 18)]
+    // Adaptive, not a fixed 5-across grid, so items get room to breathe instead
+    // of packing edge-to-edge — cramped items are hard for a toddler to
+    // visually separate while counting. See QuizLayoutMetrics for the minimum.
+    private let promptColumns = [
+        GridItem(.adaptive(minimum: QuizLayoutMetrics.countingMinimumWidth,
+                           maximum: 96),
+                 spacing: 10)
+    ]
 
     init(viewModel: NumberQuizViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
@@ -26,59 +30,26 @@ struct NumberQuizView: View {
     }
 
     var body: some View {
-        ZStack {
-            GradientBackground()
-
-            VStack(spacing: AppSpacing.section) {
-                scoreBar
-
-                if let question = viewModel.question {
-                    prompt
-                    options(for: question)
-                } else {
-                    ContentUnavailableView("No numbers yet",
-                                           systemImage: "number")
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(AppSpacing.screen)
-
-            StarBurstView(isActive: viewModel.feedback == .correct)
-        }
-        .navigationTitle("Count & Find")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            viewModel.onSafeStoppingPoint = { coordinator.checkTimeLimitAtSafePoint() }
-            viewModel.onAppear()
-        }
-        .onDisappear { viewModel.onDisappear() }
-    }
-
-    private var scoreBar: some View {
-        HStack {
-            Label("\(viewModel.starsThisSession)", systemImage: "star.fill")
-                .font(AppFonts.body)
-                .foregroundStyle(AppColors.star)
-
-            Spacer()
-
-            Button {
-                viewModel.repeatPrompt()
-            } label: {
-                Label("Say again", systemImage: "arrow.clockwise")
-                    .font(AppFonts.caption)
-            }
-            .accessibilityLabel("Repeat the question")
+        QuizScreen(
+            viewModel: viewModel,
+            coordinator: coordinator,
+            title: "Count & Find",
+            emptyTitle: "No numbers yet",
+            emptySymbol: "number",
+            tint: { AppColors.paletteColor(NumberContent.number(id: $0)?.colorIndex ?? 0) },
+            label: { "\($0)" },
+            optionAccessibilityLabel: { "Number \($0)" }
+        ) { metrics in
+            prompt(metrics)
         }
     }
 
-    private var prompt: some View {
+    private func prompt(_ metrics: QuizLayoutMetrics) -> some View {
         VStack(spacing: AppSpacing.tight) {
-            LazyVGrid(columns: promptColumns, spacing: 18) {
+            LazyVGrid(columns: promptColumns, spacing: 10) {
                 ForEach(0..<viewModel.promptCount, id: \.self) { _ in
                     Text(viewModel.promptEmoji)
-                        .font(.system(size: 68))
+                        .font(.system(size: metrics.countingEmojiSize))
                 }
             }
             .frame(maxWidth: .infinity)
@@ -92,70 +63,9 @@ struct NumberQuizView: View {
                 .foregroundStyle(AppColors.subtitle)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, AppSpacing.section * 1.5)
+        .padding(.vertical, AppSpacing.section)
         .background(AppColors.card)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
         .softShadow()
-    }
-
-    private func options(for question: NumberQuizQuestion) -> some View {
-        LazyVGrid(columns: optionColumns, spacing: 14) {
-            ForEach(question.options, id: \.self) { value in
-                optionTile(value, answer: question.answer.id)
-            }
-        }
-    }
-
-    private func optionTile(_ value: Int, answer: Int) -> some View {
-        let tint = AppColors.paletteColor(NumberContent.number(id: value)?.colorIndex ?? 0)
-
-        return Button {
-            viewModel.select(value)
-        } label: {
-            Text("\(value)")
-                .font(.system(size: 84, weight: .heavy, design: .rounded))
-                .foregroundStyle(foreground(for: value, answer: answer))
-                .frame(maxWidth: .infinity)
-                .frame(height: 150)
-                .background(background(for: value, answer: answer, tint: tint))
-                .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
-                .softShadow()
-                .scaleEffect(scale(for: value, answer: answer))
-                .animation(.spring(response: 0.35, dampingFraction: 0.55),
-                           value: viewModel.feedback)
-        }
-        .buttonStyle(.plain)
-        .disabled(!viewModel.isAcceptingInput)
-        .accessibilityLabel("Number \(value)")
-    }
-
-    // MARK: - Feedback styling
-
-    private func isRevealedAnswer(_ value: Int, answer: Int) -> Bool {
-        if case .incorrect = viewModel.feedback { return value == answer }
-        return viewModel.feedback == .correct && value == answer
-    }
-
-    private func isWrongPick(_ value: Int) -> Bool {
-        if case .incorrect(let picked) = viewModel.feedback {
-            return picked == value
-        }
-        return false
-    }
-
-    private func background(for value: Int, answer: Int, tint: Color) -> Color {
-        if isRevealedAnswer(value, answer: answer) { return AppColors.success }
-        if isWrongPick(value) { return AppColors.disabledIcon }
-        return tint.opacity(0.25)
-    }
-
-    private func foreground(for value: Int, answer: Int) -> Color {
-        isRevealedAnswer(value, answer: answer) ? .white : AppColors.title
-    }
-
-    private func scale(for value: Int, answer: Int) -> CGFloat {
-        if isRevealedAnswer(value, answer: answer) { return 1.08 }
-        if isWrongPick(value) { return 0.94 }
-        return 1.0
     }
 }

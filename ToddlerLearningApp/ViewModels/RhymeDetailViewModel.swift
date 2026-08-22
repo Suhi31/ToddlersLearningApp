@@ -8,11 +8,10 @@
 //  ViewModel that already holds both is the natural place for that, not a
 //  dependency between two otherwise-unrelated leaf services.
 //
-//  RhymeAudioService itself isn't @Observable, so its `isPlaying`/`progress`
-//  mutating internally wouldn't trigger a SwiftUI re-render on its own — this
-//  polls them into this view model's own tracked stored properties instead,
-//  the same "own stored state, not someone else's" requirement every
-//  @Observable view model in this app already follows.
+//  `RhymeAudioService` is `@Observable`, so its `isPlaying`/`progress` drive
+//  SwiftUI directly and this simply reads through to them. It used to copy
+//  them into its own stored properties via a 200ms poll that ran for the whole
+//  time the screen was open, playing or not.
 //
 
 import Foundation
@@ -23,8 +22,8 @@ final class RhymeDetailViewModel {
 
     let rhyme: Rhyme
 
-    private(set) var isPlaying = false
-    private(set) var progress: Double = 0
+    var isPlaying: Bool { rhymeAudioService.isPlaying }
+    var progress: Double { rhymeAudioService.progress }
 
     /// Fired when the rhyme finishes playing — a natural break where the
     /// daily allowance may end the session (spec F5), same convention as
@@ -34,9 +33,6 @@ final class RhymeDetailViewModel {
     private let speechService: SpeechServicing
     private let rhymeAudioService: RhymeAudioPlaying
     private let haptics: HapticsService
-
-    private var pollTask: Task<Void, Never>?
-    private var wasPlaying = false
 
     init(rhyme: Rhyme,
          speechService: SpeechServicing,
@@ -60,11 +56,13 @@ final class RhymeDetailViewModel {
 
     func onAppear() {
         haptics.prepare()
-        startPolling()
+        rhymeAudioService.onFinished = { [weak self] in
+            self?.onSafeStoppingPoint?()
+        }
     }
 
     func onDisappear() {
-        pollTask?.cancel()
+        rhymeAudioService.onFinished = nil
         rhymeAudioService.stop()
     }
 
@@ -78,34 +76,5 @@ final class RhymeDetailViewModel {
             speechService.stop()
             rhymeAudioService.play(rhyme)
         }
-        syncFromService()
-    }
-
-    private func startPolling() {
-        pollTask?.cancel()
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                syncFromService()
-                try? await Task.sleep(for: .milliseconds(200))
-            }
-        }
-    }
-
-    private func syncFromService() {
-        let newIsPlaying = rhymeAudioService.isPlaying
-        let newProgress = rhymeAudioService.progress
-
-        // A transition from playing to stopped-at-the-start (rather than
-        // paused mid-track, which leaves progress > 0) is how a natural
-        // finish shows up through this polling — RhymeAudioService.stop()
-        // resets progress to 0, pause() doesn't.
-        if wasPlaying, !newIsPlaying, newProgress == 0 {
-            onSafeStoppingPoint?()
-        }
-
-        wasPlaying = newIsPlaying
-        isPlaying = newIsPlaying
-        progress = newProgress
     }
 }

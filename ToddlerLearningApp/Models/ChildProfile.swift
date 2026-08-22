@@ -60,15 +60,29 @@ final class ChildProfile {
         AlphabetContent.unlockedLetters(forAge: age)
     }
 
+    /// Every mastered letter on record, regardless of the child's current age
+    /// gate. This is the figure milestone trophies are graded against, so that
+    /// changing a child's age can never un-earn one — see `RewardService`.
     var masteredCount: Int {
         progress.count { $0.mastery == .mastered }
+    }
+
+    /// Mastered letters *within the set this child is currently shown*.
+    ///
+    /// Distinct from `masteredCount` because `unlockedLetters` is age-gated to
+    /// 10 under age 3 while stored progress is not. Dividing the ungated count
+    /// by the gated total is what made Home read "26 of 10 letters mastered"
+    /// with a bar past 100% after a parent lowered a child's age.
+    var masteredUnlockedCount: Int {
+        let unlocked = Set(unlockedLetters.map(\.id))
+        return progress.count { $0.mastery == .mastered && unlocked.contains($0.letterID) }
     }
 
     /// 0...1 across the letters this child has actually been shown.
     var overallProgress: Double {
         let total = unlockedLetters.count
         guard total > 0 else { return 0 }
-        return Double(masteredCount) / Double(total)
+        return Double(masteredUnlockedCount) / Double(total)
     }
 
     func progress(for letterID: String) -> LetterProgress? {
@@ -89,8 +103,15 @@ final class ChildProfile {
         NumberContent.unlockedNumbers(forAge: age)
     }
 
+    /// Numbers-domain twin of `masteredCount` — ungated, for trophies.
     var masteredNumberCount: Int {
         numberProgress.count { $0.mastery == .mastered }
+    }
+
+    /// Numbers-domain twin of `masteredUnlockedCount`.
+    var masteredUnlockedNumberCount: Int {
+        let unlocked = Set(unlockedNumbers.map(\.id))
+        return numberProgress.count { $0.mastery == .mastered && unlocked.contains($0.numberID) }
     }
 
     func numberProgress(for numberID: Int) -> NumberProgress? {

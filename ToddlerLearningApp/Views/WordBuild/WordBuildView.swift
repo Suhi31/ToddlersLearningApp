@@ -33,6 +33,7 @@ struct WordBuildView: View {
 
             StarBurstView(isActive: viewModel.isComplete)
         }
+        .childScreenTypeSize()
         .navigationTitle("Build the Word")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -60,15 +61,23 @@ struct WordBuildView: View {
 
     private var slots: some View {
         HStack(spacing: 10) {
-            ForEach(Array(viewModel.filledLetters.enumerated()), id: \.offset) { _, letter in
+            ForEach(Array(viewModel.filledLetters.enumerated()), id: \.offset) { index, letter in
+                let fill = letter == nil ? AppColors.emptySlot : AppColors.success
                 Text(letter ?? "")
                     .font(.system(size: 40, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppColors.ink(on: fill))
                     .frame(width: 56, height: 64)
-                    .background(letter == nil ? AppColors.emptySlot : AppColors.success)
+                    .background(fill)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    // An unfilled slot renders as an empty string, so without
+                    // this VoiceOver reads the row as nothing at all and the
+                    // puzzle's state is undiscoverable.
+                    .accessibilityLabel("Letter \(index + 1)")
+                    .accessibilityValue(letter ?? "empty")
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Spelling \(viewModel.currentWord.id.capitalized)")
     }
 
     private var scrambledTiles: some View {

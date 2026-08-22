@@ -34,8 +34,9 @@ final class HomeViewModel {
     var streak: Int { child.currentStreak }
     var overallProgress: Double { child.overallProgress }
 
+    /// Age-scoped on both sides — see `ChildProfile.masteredUnlockedCount`.
     var progressCaption: String {
-        "\(child.masteredCount) of \(child.unlockedLetters.count) letters mastered"
+        "\(child.masteredUnlockedCount) of \(child.unlockedLetters.count) letters mastered"
     }
 
     /// Spec F4's daily goal — never shown as "missed," just a plain count

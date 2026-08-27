@@ -10,6 +10,14 @@ struct TraceLetterView: View {
     @State private var viewModel: TraceLetterViewModel
     private let coordinator: AppCoordinator
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    /// A phone in landscape: ~330pt of height, against a canvas whose floor is
+    /// 200pt plus 220pt of chrome. Stacking cannot fit; the chrome moves beside
+    /// the canvas instead.
+    private var isShort: Bool { verticalSizeClass == .compact }
+
     init(viewModel: TraceLetterViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
         self.coordinator = coordinator
@@ -20,19 +28,42 @@ struct TraceLetterView: View {
             GradientBackground()
 
             GeometryReader { geometry in
-                let edge = Self.canvasEdge(fitting: geometry.size)
+                let edge = Self.canvasEdge(fitting: geometry.size,
+                                           isRegular: horizontalSizeClass == .regular,
+                                           isShort: isShort)
 
-                VStack(spacing: AppSpacing.element) {
+                Group {
                     if let letter = viewModel.currentLetter {
-                        header(letter)
-                        canvas(letter, edge: edge)
-                        ProgressBar(value: viewModel.coverage, tint: AppColors.paletteColor(letter.colorIndex))
-                        controls
-                    }
+                        if isShort {
+                            HStack(alignment: .center, spacing: AppSpacing.element) {
+                                canvas(letter, edge: edge)
 
-                    Spacer(minLength: 0)
+                                VStack(spacing: AppSpacing.element) {
+                                    header(letter)
+                                    ProgressBar(value: viewModel.coverage,
+                                                tint: AppColors.paletteColor(letter.colorIndex))
+                                    controls
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                        } else {
+                            VStack(spacing: AppSpacing.element) {
+                                header(letter)
+                                canvas(letter, edge: edge)
+                                ProgressBar(value: viewModel.coverage,
+                                            tint: AppColors.paletteColor(letter.colorIndex))
+                                controls
+
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
                 }
                 .padding(AppSpacing.screen)
+                // Constrained to roughly the canvas width on a wide screen:
+                // spread across a full 1024pt the two arrows sit so far apart
+                // a child cannot reach both.
+                .frame(maxWidth: horizontalSizeClass == .regular ? edge + 200 : .infinity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 // The view model samples its checkpoint geometry in canvas
                 // space, so it has to be told the real edge length — a
@@ -78,10 +109,22 @@ struct TraceLetterView: View {
     /// and controls stacked beneath it. Capped so it doesn't balloon on iPad,
     /// floored so a transiently tiny or zero geometry can't produce a negative
     /// frame during a push transition.
-    private static func canvasEdge(fitting size: CGSize) -> CGFloat {
+    private static func canvasEdge(fitting size: CGSize,
+                                   isRegular: Bool,
+                                   isShort: Bool) -> CGFloat {
         let availableWidth = size.width - AppSpacing.screen * 2
-        let availableHeight = size.height - chromeHeight
-        return min(max(min(availableWidth, availableHeight), 200), 420)
+        // On a short screen the chrome sits *beside* the canvas, so only the
+        // screen padding comes out of the height budget.
+        let availableHeight = size.height - (isShort ? AppSpacing.screen * 2 : chromeHeight)
+        // The ceiling is keyed off the *smaller* screen dimension rather than a
+        // constant, so landscape — where height binds, not width — can't ask
+        // for a canvas taller than the screen. 420 was tuned for a phone and
+        // left the canvas postage-stamp sized on an iPad.
+        let ceiling = isRegular ? min(800, min(size.width, size.height) * 0.78) : 420
+        // The floor is dropped on a short screen: 200pt simply may not be
+        // available, and a canvas that overflows is worse than a smaller one.
+        let floor: CGFloat = isShort ? 120 : 200
+        return min(max(min(availableWidth, availableHeight), floor), ceiling)
     }
 
     /// Header, progress bar, controls, the spacing between them, and the screen

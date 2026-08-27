@@ -10,7 +10,17 @@ struct WordBuildView: View {
     @State private var viewModel: WordBuildViewModel
     private let coordinator: AppCoordinator
 
-    private let letterColumns = [GridItem(.adaptive(minimum: 60), spacing: 12)]
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Slot and tile sizes grow on a wide screen — at 56/60pt they were
+    /// thumbnail-sized on an iPad.
+    private var tileSide: CGFloat { horizontalSizeClass == .regular ? 96 : 60 }
+    private var slotWidth: CGFloat { horizontalSizeClass == .regular ? 88 : 56 }
+    private var slotHeight: CGFloat { horizontalSizeClass == .regular ? 100 : 64 }
+
+    private var letterColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: tileSide), spacing: 12)]
+    }
 
     init(viewModel: WordBuildViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
@@ -64,9 +74,9 @@ struct WordBuildView: View {
             ForEach(Array(viewModel.filledLetters.enumerated()), id: \.offset) { index, letter in
                 let fill = letter == nil ? AppColors.emptySlot : AppColors.success
                 Text(letter ?? "")
-                    .font(.system(size: 40, weight: .heavy, design: .rounded))
+                    .font(.system(size: slotHeight * 0.62, weight: .heavy, design: .rounded))
                     .foregroundStyle(AppColors.ink(on: fill))
-                    .frame(width: 56, height: 64)
+                    .frame(width: slotWidth, height: slotHeight)
                     .background(fill)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     // An unfilled slot renders as an empty string, so without
@@ -87,9 +97,9 @@ struct WordBuildView: View {
                     viewModel.tapScrambled(tile)
                 } label: {
                     Text(tile.letter)
-                        .font(.system(size: 32, weight: .heavy, design: .rounded))
+                        .font(.system(size: tileSide * 0.53, weight: .heavy, design: .rounded))
                         .foregroundStyle(AppColors.title)
-                        .frame(width: 60, height: 60)
+                        .frame(width: tileSide, height: tileSide)
                         .background(AppColors.primary.opacity(tile.isUsed ? 0.08 : 0.25))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }

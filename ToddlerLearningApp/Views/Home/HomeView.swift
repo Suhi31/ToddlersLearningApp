@@ -2,6 +2,16 @@
 //  HomeView.swift
 //  ToddlerLearningApp
 //
+//  The activities come first. Previously Home opened with Letter of the Day,
+//  My Progress and Today's Goal stacked above the games, which on a phone put
+//  every activity below the fold — a child had to scroll past three progress
+//  read-outs to reach the thing they came for.
+//
+//  Now: a compact header, then the grid of activities filling the screen, then
+//  one quiet strip carrying Letter of the Day and today's stars. "My Progress"
+//  is gone entirely — it is parent-facing and already on the parent dashboard,
+//  and dropping it is what makes room for the grid.
+//
 
 import SwiftUI
 
@@ -11,7 +21,23 @@ struct HomeView: View {
     private let coordinator: AppCoordinator
 
     @State private var isMascotTapped = false
-    @State private var animatedProgress: Double = 0
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    /// Two roomy columns on a phone, three much larger ones on an iPad — the
+    /// same rule covers every split-view width in between. See
+    /// `AdaptiveLayout.activityTileMinimumWidth`.
+    private var layout: AdaptiveLayout {
+        AdaptiveLayout(size: .zero,
+                       horizontalSizeClass: horizontalSizeClass,
+                       verticalSizeClass: verticalSizeClass)
+    }
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: layout.activityTileMinimumWidth),
+                  spacing: AppSpacing.element)]
+    }
 
     init(viewModel: HomeViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
@@ -25,65 +51,8 @@ struct HomeView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: AppSpacing.element) {
                     header
-                    letterOfDayCard
-                    progressCard
-                    dailyGoalCard
-
-                    SectionCard(title: "Learn Letters",
-                                subtitle: "Meet every letter and its sound",
-                                emoji: "📖",
-                                color: AppColors.primary) {
-                        coordinator.push(.learnAlphabet)
-                    }
-
-                    SectionCard(title: "Trace Letters",
-                                subtitle: "Practice writing with your finger",
-                                emoji: "✏️",
-                                color: AppColors.primary) {
-                        coordinator.push(.traceLetters)
-                    }
-
-                    SectionCard(title: "Play a Game",
-                                subtitle: "Find the letter and earn stars",
-                                emoji: "🎯",
-                                color: AppColors.success) {
-                        coordinator.push(.quiz)
-                    }
-
-                    SectionCard(title: "Learn Numbers",
-                                subtitle: "Count from one to ten",
-                                emoji: "🔢",
-                                color: AppColors.primary) {
-                        coordinator.push(.learnNumbers)
-                    }
-
-                    SectionCard(title: "Count & Find",
-                                subtitle: "Count how many and earn stars",
-                                emoji: "🍎",
-                                color: AppColors.success) {
-                        coordinator.push(.numberQuiz)
-                    }
-
-                    SectionCard(title: "Build the Word",
-                                subtitle: "Spell it and hear it come together",
-                                emoji: "🧩",
-                                color: AppColors.primary) {
-                        coordinator.push(.wordBuild)
-                    }
-
-                    SectionCard(title: "Nursery Rhymes",
-                                subtitle: "Sing along and learn",
-                                emoji: "🎵",
-                                color: AppColors.success) {
-                        coordinator.push(.rhymes)
-                    }
-
-                    SectionCard(title: "My Rewards",
-                                subtitle: "\(viewModel.starCount) stars collected",
-                                emoji: "🏆",
-                                color: AppColors.warning) {
-                        coordinator.push(.rewards)
-                    }
+                    activityGrid
+                    footerStrip
                 }
                 .padding(AppSpacing.screen)
             }
@@ -103,33 +72,37 @@ struct HomeView: View {
         .onAppear {
             // Returning to Home is a safe point to end the session on (spec F5).
             coordinator.checkTimeLimitAtSafePoint()
-            animateProgressIn()
         }
     }
 
+    // MARK: - Header
+
+    /// One row. The streak used to sit on its own line under the greeting;
+    /// it now rides beside the star count so the header costs a single line.
     private var header: some View {
         HStack(spacing: AppSpacing.element) {
             mascotButton
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.greeting)
-                    .font(AppFonts.heading)
-                    .foregroundStyle(AppColors.title)
-
-                if viewModel.streak > 0 {
-                    Text("🔥 \(viewModel.streak) day streak")
-                        .font(AppFonts.caption)
-                        .foregroundStyle(AppColors.subtitle)
-                }
-            }
+            Text(viewModel.greeting)
+                .font(AppFonts.heading)
+                .foregroundStyle(AppColors.title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 4) {
-                Text("⭐️")
-                Text("\(viewModel.starCount)")
+            HStack(spacing: AppSpacing.tight) {
+                if viewModel.streak > 0 {
+                    Text("🔥 \(viewModel.streak)")
+                        .font(AppFonts.body)
+                        .foregroundStyle(AppColors.subtitle)
+                        .accessibilityLabel("\(viewModel.streak) day streak")
+                }
+
+                Text("⭐️ \(viewModel.starCount)")
                     .font(AppFonts.heading)
                     .foregroundStyle(AppColors.title)
+                    .accessibilityLabel("\(viewModel.starCount) stars")
             }
         }
     }
@@ -146,7 +119,7 @@ struct HomeView: View {
             }
         } label: {
             Text(viewModel.avatar)
-                .font(.system(size: 52))
+                .font(.system(size: 44))
         }
         .buttonStyle(.plain)
         .scaleEffect(isMascotTapped ? 1.25 : 1.0)
@@ -155,109 +128,123 @@ struct HomeView: View {
         .accessibilityLabel("Say hi")
     }
 
+    // MARK: - Activities
+
+    private var activityGrid: some View {
+        LazyVGrid(columns: columns, spacing: AppSpacing.element) {
+            ActivityTile(title: "Learn Letters", emoji: "📖", color: AppColors.primary,
+                         height: layout.activityTileHeight) {
+                coordinator.push(.learnAlphabet)
+            }
+            ActivityTile(title: "Trace Letters", emoji: "✏️", color: AppColors.primary,
+                         height: layout.activityTileHeight) {
+                coordinator.push(.traceLetters)
+            }
+            ActivityTile(title: "Play a Game", emoji: "🎯", color: AppColors.success,
+                         height: layout.activityTileHeight) {
+                coordinator.push(.quiz)
+            }
+            ActivityTile(title: "Learn Numbers", emoji: "🔢", color: AppColors.primary,
+                         height: layout.activityTileHeight) {
+                coordinator.push(.learnNumbers)
+            }
+            ActivityTile(title: "Count & Find", emoji: "🍎", color: AppColors.success,
+                         height: layout.activityTileHeight) {
+                coordinator.push(.numberQuiz)
+            }
+            ActivityTile(title: "Build the Word", emoji: "🧩", color: AppColors.primary,
+                         height: layout.activityTileHeight) {
+                coordinator.push(.wordBuild)
+            }
+            ActivityTile(title: "Nursery Rhymes", emoji: "🎵", color: AppColors.success,
+                         height: layout.activityTileHeight) {
+                coordinator.push(.rhymes)
+            }
+            ActivityTile(title: "My Rewards", emoji: "🏆", color: AppColors.warning,
+                         badge: "\(viewModel.starCount) stars",
+                         height: layout.activityTileHeight) {
+                coordinator.push(.rewards)
+            }
+        }
+    }
+
+    // MARK: - Footer
+
+    /// Everything that used to compete with the games for the top of the
+    /// screen, reduced to one quiet row: the day's letter on the left, today's
+    /// star progress on the right. Spec F4 still wants the gentle daily goal
+    /// visible on Home — it just shouldn't be the first thing a toddler sees.
+    private var footerStrip: some View {
+        HStack(spacing: AppSpacing.element) {
+            letterOfDayPill
+            Spacer(minLength: 0)
+            goalReadout
+        }
+        .padding(AppSpacing.element)
+        .background(AppColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
+        .softShadow()
+    }
+
     /// A fresh reason to open the app each day, and a one-tap way to hear a
     /// letter without diving into Learn Letters first.
     @ViewBuilder
-    private var letterOfDayCard: some View {
+    private var letterOfDayPill: some View {
         if let letter = viewModel.letterOfTheDay {
             let tint = AppColors.paletteColor(letter.colorIndex)
 
             Button {
                 viewModel.tapLetterOfDay()
             } label: {
-                HStack(spacing: AppSpacing.element) {
+                HStack(spacing: AppSpacing.tight) {
                     Text(letter.uppercase)
-                        .font(.system(size: 38, weight: .heavy, design: .rounded))
+                        .font(AppFonts.heading)
                         .foregroundStyle(AppColors.ink(on: tint))
-                        .frame(width: 64, height: 64)
+                        .frame(width: 40, height: 40)
                         .background(tint)
-                        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.tileCornerRadius))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("LETTER OF THE DAY")
-                            .font(AppFonts.labelBold)
-                            .foregroundStyle(AppColors.subtitle)
-
-                        Text("\(letter.uppercase) is for \(letter.word)")
-                            .font(AppFonts.body)
-                            .foregroundStyle(AppColors.title)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    Text(letter.emojis.first ?? "")
-                        .font(.system(size: 34))
+                    // No "LETTER OF THE DAY" eyebrow: in a strip this narrow it
+                    // wrapped to two lines and pushed the whole footer off the
+                    // bottom of the screen, and "Z is for Zebra" beside a
+                    // letter tile already says what it is.
+                    Text("\(letter.uppercase) is for \(letter.word)")
+                        .font(AppFonts.caption)
+                        .foregroundStyle(AppColors.title)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
 
                     Image(systemName: "speaker.wave.2.fill")
-                        .font(AppFonts.caption.weight(.bold))
+                        .font(AppFonts.label.weight(.bold))
                         .foregroundStyle(tint)
-                }
-                .padding(AppSpacing.element)
-                .background(tint.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppSpacing.cornerRadius)
-                        .stroke(tint.opacity(0.45), lineWidth: 2)
                 }
             }
             .buttonStyle(BouncyButtonStyle())
+            .accessibilityElement(children: .combine)
             .accessibilityLabel("Letter of the day: \(letter.uppercase), for \(letter.word). Tap to hear it.")
         }
     }
 
-    private var progressCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.tight) {
-            HStack {
-                Text("My Progress")
-                    .font(AppFonts.body)
-                    .foregroundStyle(AppColors.title)
-
-                Spacer()
-
-                if let caption = viewModel.timeRemainingCaption {
-                    Text(caption)
-                        .font(AppFonts.caption)
-                        .foregroundStyle(AppColors.warning)
-                }
+    private var goalReadout: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            // Spec F5's soft heads-up. It lived on the old progress card; it
+            // still belongs on Home, just not shouting.
+            if let caption = viewModel.timeRemainingCaption {
+                Text(caption)
+                    .font(AppFonts.label)
+                    .foregroundStyle(AppColors.warning)
             }
-
-            ProgressBar(value: animatedProgress)
-
-            Text(viewModel.progressCaption)
-                .font(AppFonts.caption)
-                .foregroundStyle(AppColors.subtitle)
-        }
-        .padding(AppSpacing.element)
-        .background(AppColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
-        .softShadow()
-    }
-
-    private var dailyGoalCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.tight) {
-            Text("🎯 Today's Goal")
-                .font(AppFonts.body)
-                .foregroundStyle(AppColors.title)
-
-            ProgressBar(value: viewModel.dailyGoalProgress, tint: AppColors.warning)
 
             Text(viewModel.dailyGoalCaption)
                 .font(AppFonts.caption)
                 .foregroundStyle(AppColors.subtitle)
-        }
-        .padding(AppSpacing.element)
-        .background(AppColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
-        .softShadow()
-    }
+                .lineLimit(1)
 
-    /// Starts at zero and fills to the real value just after appearing, so the
-    /// bar visibly grows rather than snapping straight to its resting state.
-    private func animateProgressIn() {
-        animatedProgress = 0
-        Task {
-            try? await Task.sleep(for: .seconds(0.25))
-            animatedProgress = viewModel.overallProgress
+            ProgressBar(value: viewModel.dailyGoalProgress,
+                        tint: AppColors.warning,
+                        height: 8)
+                .frame(width: 96)
         }
+        .accessibilityElement(children: .combine)
     }
 }

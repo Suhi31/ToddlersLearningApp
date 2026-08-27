@@ -26,6 +26,12 @@ struct ParentGateView: View {
 
     private var expectedAnswer: Int { multiplicand * multiplier }
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var layout: AdaptiveLayout {
+        AdaptiveLayout(size: .zero, horizontalSizeClass: horizontalSizeClass)
+    }
+
     var body: some View {
         ZStack {
             GradientBackground()
@@ -76,6 +82,8 @@ struct ParentGateView: View {
             }
             .padding(AppSpacing.screen)
             .padding(.top, AppSpacing.section)
+            .frame(maxWidth: layout.formWidth)
+            .frame(maxWidth: .infinity)
         }
         .navigationTitle("Parents")
         .navigationBarTitleDisplayMode(.inline)

@@ -78,13 +78,6 @@ final class ChildProfile {
         return progress.count { $0.mastery == .mastered && unlocked.contains($0.letterID) }
     }
 
-    /// 0...1 across the letters this child has actually been shown.
-    var overallProgress: Double {
-        let total = unlockedLetters.count
-        guard total > 0 else { return 0 }
-        return Double(masteredUnlockedCount) / Double(total)
-    }
-
     func progress(for letterID: String) -> LetterProgress? {
         progress.first { $0.letterID == letterID }
     }

@@ -15,14 +15,23 @@ struct NumberQuizView: View {
     @State private var viewModel: NumberQuizViewModel
     private let coordinator: AppCoordinator
 
-    // Adaptive, not a fixed 5-across grid, so items get room to breathe instead
-    // of packing edge-to-edge — cramped items are hard for a toddler to
-    // visually separate while counting. See QuizLayoutMetrics for the minimum.
-    private let promptColumns = [
-        GridItem(.adaptive(minimum: QuizLayoutMetrics.countingMinimumWidth,
-                           maximum: 96),
-                 spacing: 10)
-    ]
+    private static let countingSpacing: CGFloat = 10
+
+    /// Sized so items get room to breathe instead of packing edge-to-edge —
+    /// cramped items are hard for a toddler to visually separate while
+    /// counting — and capped at the number of items so the row centres rather
+    /// than hanging left against a gap on a wide screen.
+    private func promptColumns(_ metrics: QuizLayoutMetrics) -> [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: Self.countingSpacing),
+            count: metrics.columnCount(for: viewModel.promptCount,
+                                       minimumWidth: QuizLayoutMetrics.countingMinimumWidth,
+                                       spacing: Self.countingSpacing,
+                                       // the counting grid sits inside the
+                                       // card's own horizontal padding
+                                       horizontalInset: AppSpacing.element * 2)
+        )
+    }
 
     init(viewModel: NumberQuizViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
@@ -46,7 +55,7 @@ struct NumberQuizView: View {
 
     private func prompt(_ metrics: QuizLayoutMetrics) -> some View {
         VStack(spacing: AppSpacing.tight) {
-            LazyVGrid(columns: promptColumns, spacing: 10) {
+            LazyVGrid(columns: promptColumns(metrics), spacing: Self.countingSpacing) {
                 ForEach(0..<viewModel.promptCount, id: \.self) { _ in
                     Text(viewModel.promptEmoji)
                         .font(.system(size: metrics.countingEmojiSize))

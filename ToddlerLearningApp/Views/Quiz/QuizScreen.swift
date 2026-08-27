@@ -37,34 +37,66 @@ struct QuizScreen<Domain: QuizDomain, Prompt: View>: View {
 
     @ViewBuilder let prompt: (QuizLayoutMetrics) -> Prompt
 
-    private let columns = [
-        GridItem(.adaptive(minimum: QuizLayoutMetrics.optionMinimumWidth), spacing: 14)
-    ]
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    /// A phone in landscape has ~330pt of height — nowhere near enough to stack
+    /// a prompt card above two rows of answer tiles. Side by side instead.
+    private var isShort: Bool { verticalSizeClass == .compact }
+
+    /// Explicit `.flexible()` columns rather than `.adaptive`, capped at the
+    /// number of options — see `QuizLayoutMetrics.columnCount(for:...)` for why
+    /// adaptive left the row hanging to the left on a wide screen.
+    private func optionColumns(_ metrics: QuizLayoutMetrics) -> [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: QuizLayoutMetrics.optionSpacing),
+            count: metrics.columnCount(for: viewModel.options.count,
+                                       minimumWidth: QuizLayoutMetrics.optionMinimumWidth,
+                                       spacing: QuizLayoutMetrics.optionSpacing)
+        )
+    }
 
     var body: some View {
         ZStack {
             GradientBackground()
 
             GeometryReader { geometry in
-                let metrics = QuizLayoutMetrics(availableHeight: geometry.size.height)
+                let metrics = QuizLayoutMetrics(size: geometry.size,
+                                                isRegular: horizontalSizeClass == .regular,
+                                                isShort: isShort)
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: AppSpacing.section) {
                         scoreBar
 
                         if viewModel.question != nil {
-                            prompt(metrics)
-                            optionGrid(metrics)
+                            if isShort {
+                                HStack(alignment: .center, spacing: AppSpacing.section) {
+                                    prompt(metrics)
+                                        .frame(maxWidth: .infinity)
+                                    optionGrid(metrics)
+                                        .frame(maxWidth: .infinity)
+                                }
+                            } else {
+                                prompt(metrics)
+                                optionGrid(metrics)
+                            }
                         } else {
                             ContentUnavailableView(emptyTitle, systemImage: emptySymbol)
                         }
                     }
                     .padding(AppSpacing.screen)
                     // Fills the screen when the content is shorter, which is the
-                    // normal case now that everything is sized to fit — this is
-                    // what keeps the layout pinned to the top instead of
-                    // centring, and replaces a trailing Spacer.
-                    .frame(minHeight: geometry.size.height, alignment: .top)
+                    // normal case now that everything is sized to fit, and
+                    // replaces a trailing Spacer.
+                    //
+                    // Top-aligned on a phone, where the content very nearly
+                    // fills the screen anyway. Centred on a wide screen: a
+                    // five-tile quiz can't sensibly fill an iPad's height, and
+                    // balanced margins read as deliberate where a single large
+                    // gap under the tiles reads as a layout bug.
+                    .frame(minHeight: geometry.size.height,
+                           alignment: metrics.isRegular ? .center : .top)
                 }
             }
 
@@ -100,7 +132,7 @@ struct QuizScreen<Domain: QuizDomain, Prompt: View>: View {
     }
 
     private func optionGrid(_ metrics: QuizLayoutMetrics) -> some View {
-        LazyVGrid(columns: columns, spacing: 14) {
+        LazyVGrid(columns: optionColumns(metrics), spacing: QuizLayoutMetrics.optionSpacing) {
             ForEach(viewModel.options, id: \.self) { option in
                 optionTile(option, metrics: metrics)
             }

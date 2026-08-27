@@ -9,7 +9,14 @@ struct RewardsView: View {
 
     @State private var viewModel: RewardsViewModel
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 3)
+    /// Three across on a phone; simply more as the screen widens, rather than
+    /// three stretched-out columns on an iPad.
+    ///
+    /// The minimum is load-bearing: the narrowest inner width is ~330pt, and
+    /// keeping three columns there needs `(330 + 14) / 3 - 14 = 100`. At 150 it
+    /// silently dropped to two columns on a phone — a regression on the one
+    /// platform this work was supposed to leave alone.
+    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 14)]
 
     init(viewModel: RewardsViewModel) {
         _viewModel = State(initialValue: viewModel)

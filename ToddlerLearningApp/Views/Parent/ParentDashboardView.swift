@@ -17,8 +17,15 @@ struct ParentDashboardView: View {
     /// The cost is that its side-by-side rows have to reflow themselves —
     /// at AX5 an HStack squeezes "Mastered 0" down to "Mast/ered 0".
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private let masteryColumns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
+    private var layout: AdaptiveLayout {
+        AdaptiveLayout(size: .zero, horizontalSizeClass: horizontalSizeClass)
+    }
+
+    /// Six across on a phone; more as the screen widens, so cells stay
+    /// square-ish instead of stretching to 200x40 letterboxes on an iPad.
+    private let masteryColumns = [GridItem(.adaptive(minimum: 44), spacing: 8)]
 
     /// Horizontal normally, stacked once text is large enough that a row of
     /// items can no longer share the width.
@@ -38,19 +45,8 @@ struct ParentDashboardView: View {
             GradientBackground()
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: AppSpacing.element) {
-                    summarySection
-
-                    ForEach(viewModel.summaries) { summary in
-                        masterySection(summary)
-                        practiceSection(summary)
-                    }
-
-                    screenTimeSection
-                    limitSection
-                    privacyNote
-                }
-                .padding(AppSpacing.screen)
+                cardLayout
+                    .padding(AppSpacing.screen)
             }
         }
         .navigationTitle("Parent Dashboard")
@@ -71,6 +67,40 @@ struct ParentDashboardView: View {
                 .accessibilityLabel("Settings")
             }
         }
+    }
+
+    /// One column on a phone. Two on a wide screen, so the letter and number
+    /// halves sit side by side instead of a single 960pt-wide ribbon of cards.
+    @ViewBuilder
+    private var cardLayout: some View {
+        if layout.isRegular {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: AppSpacing.element),
+                               count: 2),
+                alignment: .leading,
+                spacing: AppSpacing.element
+            ) {
+                cards
+            }
+        } else {
+            VStack(spacing: AppSpacing.element) {
+                cards
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var cards: some View {
+        summarySection
+
+        ForEach(viewModel.summaries) { summary in
+            masterySection(summary)
+            practiceSection(summary)
+        }
+
+        screenTimeSection
+        limitSection
+        privacyNote
     }
 
     // MARK: - Sections
@@ -200,7 +230,7 @@ struct ParentDashboardView: View {
                 }
             }
         }
-        .frame(height: 90, alignment: .bottom)
+        .frame(height: layout.isRegular ? 160 : 90, alignment: .bottom)
     }
 
     private var limitSection: some View {
@@ -211,6 +241,7 @@ struct ParentDashboardView: View {
                 Text("The app finishes the current activity, then shows a friendly goodbye. It never cuts off mid-question.")
                     .font(AppFonts.caption)
                     .foregroundStyle(AppColors.subtitle)
+                    .frame(maxWidth: layout.proseWidth, alignment: .leading)
 
                 Picker("Daily limit", selection: Binding(
                     get: { viewModel.dailyLimitMinutes },
@@ -239,6 +270,7 @@ struct ParentDashboardView: View {
                 Text("All progress is stored on this device only. There are no ads, no accounts, no analytics, and nothing is ever uploaded.")
                     .font(AppFonts.caption)
                     .foregroundStyle(AppColors.subtitle)
+                    .frame(maxWidth: layout.proseWidth, alignment: .leading)
             }
         }
     }

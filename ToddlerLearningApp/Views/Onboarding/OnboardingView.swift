@@ -12,11 +12,21 @@ struct OnboardingView: View {
 
     @FocusState private var isNameFocused: Bool
 
-    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
+    /// Two across on a phone, all four in one row once there's room.
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible()),
+              count: horizontalSizeClass == .regular ? 4 : 2)
+    }
 
     init(viewModel: OnboardingViewModel, coordinator: AppCoordinator) {
         _viewModel = State(initialValue: viewModel)
         self.coordinator = coordinator
+    }
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var layout: AdaptiveLayout {
+        AdaptiveLayout(size: .zero, horizontalSizeClass: horizontalSizeClass)
     }
 
     var body: some View {
@@ -61,6 +71,10 @@ struct OnboardingView: View {
                         .padding(.bottom, AppSpacing.section)
                 }
                 .padding(AppSpacing.screen)
+                // A 960pt-wide "Enter your name" field is the clearest tell of
+                // a phone layout stretched onto a tablet.
+                .frame(maxWidth: layout.formWidth)
+                .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
         }

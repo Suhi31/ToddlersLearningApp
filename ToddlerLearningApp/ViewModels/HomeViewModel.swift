@@ -32,12 +32,6 @@ final class HomeViewModel {
     var avatar: String { child.avatarEmoji }
     var starCount: Int { child.starCount }
     var streak: Int { child.currentStreak }
-    var overallProgress: Double { child.overallProgress }
-
-    /// Age-scoped on both sides — see `ChildProfile.masteredUnlockedCount`.
-    var progressCaption: String {
-        "\(child.masteredUnlockedCount) of \(child.unlockedLetters.count) letters mastered"
-    }
 
     /// Spec F4's daily goal — never shown as "missed," just a plain count
     /// that silently reads 0 again once a new day starts.

@@ -10,6 +10,8 @@ struct TraceLetterView: View {
     @State private var viewModel: TraceLetterViewModel
     private let coordinator: AppCoordinator
 
+    @State private var isStartPulsing = false
+
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -147,16 +149,45 @@ struct TraceLetterView: View {
                 .font(.system(size: size * 0.8, weight: .heavy, design: .rounded))
                 .foregroundStyle(tint.opacity(0.08))
 
-            // The dotted guide and the checkpoint hit-testing both come from
-            // the same LetterTracePathContent/TracePathSampler geometry, so
-            // they can't drift apart the way the old glyph-vs-mask pair could.
+            // The dotted guide and the hit-testing both come from the same
+            // LetterTracePathContent/TracePathSampler geometry, so they can't
+            // drift apart the way the old glyph-vs-mask pair could. Strokes the
+            // child isn't on yet are faded, so which one is live is obvious —
+            // previously every stroke was drawn identically.
             Canvas { context, _ in
-                for path in viewModel.guidePaths {
+                for (index, path) in viewModel.guidePaths.enumerated() {
+                    let isActive = index == viewModel.currentStrokeIndex
                     context.stroke(
                         path,
-                        with: .color(tint.opacity(0.4)),
+                        with: .color(tint.opacity(isActive ? 0.45 : 0.12)),
                         style: StrokeStyle(lineWidth: 14, lineCap: .round, lineJoin: .round, dash: [1, 16])
                     )
+                }
+            }
+
+            // Which way to travel, visible before the child starts rather than
+            // only once they are already moving.
+            Canvas { context, _ in
+                for marker in viewModel.directionMarkers() {
+                    let isActive = marker.strokeIndex == viewModel.currentStrokeIndex
+                    context.stroke(
+                        Self.arrowhead(at: marker.point, tangent: marker.tangent),
+                        with: .color(tint.opacity(isActive ? 0.55 : 0.15)),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+                }
+            }
+
+            // Stroke order, for letters drawn in more than one piece.
+            if viewModel.strokeCount > 1, !viewModel.isComplete {
+                ForEach(Array(viewModel.strokeStartPoints.enumerated()), id: \.offset) { index, point in
+                    Text("\(index + 1)")
+                        .font(AppFonts.label.weight(.bold))
+                        .foregroundStyle(AppColors.ink(on: tint))
+                        .frame(width: 20, height: 20)
+                        .background(tint.opacity(index == viewModel.currentStrokeIndex ? 0.9 : 0.25))
+                        .clipShape(Circle())
+                        .position(point)
                 }
             }
 
@@ -164,23 +195,47 @@ struct TraceLetterView: View {
                 Circle()
                     .fill(AppColors.success)
                     .frame(width: 18, height: 18)
+                    .scaleEffect(isStartPulsing ? 1.35 : 1.0)
+                    .opacity(isStartPulsing ? 0.55 : 1.0)
+                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                               value: isStartPulsing)
                     .position(start)
             }
 
-            if !viewModel.isComplete, let target = viewModel.nextTargetPoint {
-                Circle()
-                    .fill(tint)
-                    .frame(width: 26, height: 26)
-                    .position(target)
+            // The moving target now points the way instead of being a bare dot.
+            if !viewModel.isComplete, let target = viewModel.nextTarget {
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(tint)
+                    .rotationEffect(.radians(atan2(target.tangent.dy, target.tangent.dx)))
+                    .position(target.point)
                     .opacity(0.85)
             }
 
+            // Ghost dot demonstrating the stroke. Cancelled the moment the
+            // child touches down, so it never fights their input.
+            if let demo = viewModel.demoProgress,
+               let stroke = viewModel.currentStroke,
+               let point = stroke.point(atArcLength: demo) {
+                Circle()
+                    .fill(AppColors.success)
+                    .frame(width: 22, height: 22)
+                    .overlay { Circle().stroke(.white, lineWidth: 3) }
+                    .position(point)
+                    .shadow(color: AppColors.success.opacity(0.5), radius: 6)
+            }
+
+            // The ink is the letter's own path revealed as far as the child has
+            // genuinely traced — never the raw finger positions, so it cannot
+            // render a line that isn't part of the letter.
             Canvas { context, _ in
-                context.stroke(
-                    viewModel.strokePath,
-                    with: .color(tint),
-                    style: StrokeStyle(lineWidth: 16, lineCap: .round, lineJoin: .round)
-                )
+                for path in viewModel.tracedPaths {
+                    context.stroke(
+                        path,
+                        with: .color(tint),
+                        style: StrokeStyle(lineWidth: 16, lineCap: .round, lineJoin: .round)
+                    )
+                }
             }
 
             if viewModel.isComplete {
@@ -198,6 +253,7 @@ struct TraceLetterView: View {
                 .onEnded { _ in viewModel.endStroke() }
         )
         .animation(.spring(response: 0.4, dampingFraction: 0.6), value: viewModel.isComplete)
+        .onAppear { isStartPulsing = true }
         .accessibilityLabel("Trace the letter \(letter.uppercase) with your finger")
         // Without this trait VoiceOver swallows the drag for its own
         // navigation and the activity is simply unusable with it turned on.
@@ -210,6 +266,22 @@ struct TraceLetterView: View {
         // report locations in the full-width frame's space rather than the
         // canvas's, offsetting every touch by the left margin.
         .frame(maxWidth: .infinity)
+    }
+
+    /// A small chevron pointing along `tangent`, drawn as two strokes rather
+    /// than an SF Symbol so it can live inside the same `Canvas` pass as the
+    /// dotted guide instead of costing a view per marker.
+    private static func arrowhead(at point: CGPoint, tangent: CGVector, size: CGFloat = 7) -> Path {
+        let angle = atan2(tangent.dy, tangent.dx)
+        let spread = CGFloat.pi * 0.78
+
+        var path = Path()
+        for side in [angle - spread, angle + spread] {
+            path.move(to: point)
+            path.addLine(to: CGPoint(x: point.x + cos(side) * size,
+                                     y: point.y + sin(side) * size))
+        }
+        return path
     }
 
     private var controls: some View {

@@ -12,13 +12,73 @@
 
 import SwiftUI
 
-/// One stroke's on-screen geometry: a smooth path to draw as the dotted
-/// guide, a dense point list to measure deviation against, and the ordered
-/// checkpoints a trace must pass through to complete the stroke.
+/// One stroke's on-screen geometry: a smooth path to draw as the dotted guide,
+/// plus the ordered polyline and its arc-length/tangent tables, which is what
+/// lets tracing be validated as *progress along* the stroke rather than as a
+/// set of checkpoints that happen to get touched.
 struct TraceStrokeGeometry {
+
     let guidePath: Path
+
+    /// The stroke as an ordered polyline, in writing order.
     let densePoints: [CGPoint]
-    let waypoints: [CGPoint]
+
+    /// Arc length from the stroke's start to each dense point. Same length as
+    /// `densePoints`, monotonically increasing.
+    let cumulativeLengths: [CGFloat]
+
+    /// Unit direction of travel at each dense point — the "which way should the
+    /// finger be moving" reference.
+    let tangents: [CGVector]
+
+    var totalLength: CGFloat { cumulativeLengths.last ?? 0 }
+
+    var start: CGPoint? { densePoints.first }
+
+    /// The point at `arcLength` along the stroke, for placing the target
+    /// chevron, the resume marker and the demo dot.
+    func point(atArcLength arcLength: CGFloat) -> CGPoint? {
+        guard let index = index(atArcLength: arcLength) else { return nil }
+        return densePoints[index]
+    }
+
+    func tangent(atArcLength arcLength: CGFloat) -> CGVector? {
+        guard let index = index(atArcLength: arcLength) else { return nil }
+        return tangents[index]
+    }
+
+    private func index(atArcLength arcLength: CGFloat) -> Int? {
+        guard !densePoints.isEmpty else { return nil }
+        let clamped = min(max(arcLength, 0), totalLength)
+        // Monotonic, so a linear scan from the start is exact and cheap at
+        // these sizes (a few hundred points per stroke).
+        let found = cumulativeLengths.firstIndex { $0 >= clamped }
+        return found ?? densePoints.count - 1
+    }
+
+    /// Projects `point` onto the stroke, but only over `window` of arc length.
+    ///
+    /// The window is what stops a finger hovering over a *different part of the
+    /// same letter* from counting: the previous implementation took the global
+    /// minimum distance to the whole stroke, which on a curved letter made the
+    /// tolerance corridor the entire shape and let a child circle their way to
+    /// completion.
+    func project(_ point: CGPoint, within window: ClosedRange<CGFloat>)
+        -> (arcLength: CGFloat, distance: CGFloat, tangent: CGVector)? {
+
+        var best: (arcLength: CGFloat, distance: CGFloat, tangent: CGVector)?
+
+        for (index, candidate) in densePoints.enumerated() {
+            let arcLength = cumulativeLengths[index]
+            guard window.contains(arcLength) else { continue }
+
+            let distance = hypot(candidate.x - point.x, candidate.y - point.y)
+            if best == nil || distance < best!.distance {
+                best = (arcLength, distance, tangents[index])
+            }
+        }
+        return best
+    }
 }
 
 struct LetterTraceGeometry {
@@ -31,12 +91,6 @@ enum TracePathSampler {
     /// Interpolated points per authored segment — enough that a smoothed
     /// curve reads as round rather than faceted at the sizes this app draws.
     private static let samplesPerSegment = 14
-
-    /// Target spacing between checkpoints, in on-screen points. Wide enough
-    /// that a toddler's fingertip comfortably lands inside
-    /// `TraceLetterViewModel`'s tolerance radius around each one, tight
-    /// enough that a letter isn't reduced to two or three checkpoints total.
-    private static let waypointSpacing: CGFloat = 40
 
     private struct CacheKey: Hashable {
         let letterID: String
@@ -70,7 +124,8 @@ enum TracePathSampler {
         return TraceStrokeGeometry(
             guidePath: guidePath,
             densePoints: dense,
-            waypoints: resample(dense, spacing: waypointSpacing)
+            cumulativeLengths: cumulativeLengths(of: dense),
+            tangents: tangents(of: dense)
         )
     }
 
@@ -141,29 +196,41 @@ enum TracePathSampler {
         )
     }
 
-    // MARK: - Waypoint resampling
+    // MARK: - Arc length and tangents
 
-    /// Walks the dense polyline and drops a checkpoint every `spacing` points
-    /// of arc length, always including the final point so the last checkpoint
-    /// lands exactly at the stroke's end.
-    private static func resample(_ dense: [CGPoint], spacing: CGFloat) -> [CGPoint] {
-        guard let first = dense.first else { return [] }
-        var waypoints = [first]
-        var accumulated: CGFloat = 0
+    /// Running arc length at each point. This is the same walk the old
+    /// checkpoint resampler did; it just keeps every step instead of dropping a
+    /// marker every 40pt.
+    private static func cumulativeLengths(of dense: [CGPoint]) -> [CGFloat] {
+        guard !dense.isEmpty else { return [] }
+
+        var lengths: [CGFloat] = [0]
+        lengths.reserveCapacity(dense.count)
 
         for index in 1..<dense.count {
-            let previous = dense[index - 1]
-            let current = dense[index]
-            accumulated += hypot(current.x - previous.x, current.y - previous.y)
-            if accumulated >= spacing {
-                waypoints.append(current)
-                accumulated = 0
-            }
+            let step = hypot(dense[index].x - dense[index - 1].x,
+                             dense[index].y - dense[index - 1].y)
+            lengths.append(lengths[index - 1] + step)
         }
+        return lengths
+    }
 
-        if let last = dense.last, waypoints.last != last {
-            waypoints.append(last)
+    /// Unit direction of travel at each point, from a central difference so
+    /// corners get the average of the two adjacent segments rather than
+    /// whichever one happens to come first.
+    private static func tangents(of dense: [CGPoint]) -> [CGVector] {
+        guard dense.count > 1 else { return dense.map { _ in CGVector(dx: 0, dy: 0) } }
+
+        return dense.indices.map { index in
+            let previous = dense[max(index - 1, 0)]
+            let next = dense[min(index + 1, dense.count - 1)]
+            return normalized(CGVector(dx: next.x - previous.x, dy: next.y - previous.y))
         }
-        return waypoints
+    }
+
+    private static func normalized(_ vector: CGVector) -> CGVector {
+        let magnitude = hypot(vector.dx, vector.dy)
+        guard magnitude > 0 else { return CGVector(dx: 0, dy: 0) }
+        return CGVector(dx: vector.dx / magnitude, dy: vector.dy / magnitude)
     }
 }

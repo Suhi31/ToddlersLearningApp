@@ -2,14 +2,23 @@
 //  TraceLetterViewModel.swift
 //  ToddlerLearningApp
 //
-//  Checkpoint-based tracing (see TracePathSampler/LetterTracePathContent): a
-//  stroke counts as traced once the child's finger has visited each of its
-//  ordered checkpoints, within a generous tolerance radius, with a loose
-//  deviation guard rejecting points nowhere near the stroke's actual path —
-//  so unlike the old region-coverage approach, a scribble can't complete a
-//  trace, and multi-stroke letters (A, E, T, ...) require finishing one
-//  stroke before the next one's checkpoints unlock. Session-only, like Build
-//  the Word — no persisted per-letter mastery domain of its own.
+//  Tracing is validated as *progress along* a stroke, not as a set of
+//  checkpoints that happen to get touched.
+//
+//  The checkpoint model it replaces accepted two things that are not tracing.
+//  It never compared the finger's movement to the stroke's direction, and its
+//  deviation guard took the global minimum distance to the whole stroke — so on
+//  a curved letter the tolerance corridor was the entire shape and a child
+//  could wander, backtrack or circle and still collect checkpoints in order.
+//  It also ignored finger lifts entirely, so tapping each checkpoint in turn
+//  completed a letter with no dragging at all.
+//
+//  Now a touch only earns progress when it is inside a corridor around the
+//  stroke, within an arc-length window of where the child already is, and
+//  moving *with* the stroke rather than against it. Progress is monotonic:
+//  backtracking never advances it and never destroys it.
+//
+//  Session-only, like Build the Word — no persisted per-letter mastery domain.
 //
 
 import Foundation
@@ -24,28 +33,49 @@ final class TraceLetterViewModel {
     /// model is usable before the first layout pass reports a size.
     private(set) var canvasSize: CGFloat = 320
 
-    /// How close a touch must land to the next checkpoint to count, as a
-    /// fraction of the canvas edge — wide relative to the ink stroke width,
-    /// since toddler finger placement is imprecise. Proportional rather than a
-    /// fixed point value so the tolerance feels the same on a 280pt phone
-    /// canvas as on a 420pt iPad one; the ratios preserve the 34pt and 90pt
-    /// that were hand-tuned against the original 320pt canvas.
-    private static let waypointRadiusRatio: CGFloat = 34.0 / 320.0
-
-    /// Points farther than this from the current stroke's path are ignored
-    /// entirely, so a scribble far from the letter can't rack up checkpoints
-    /// it never actually traced. Proportional for the same reason as above.
-    private static let maxDeviationRatio: CGFloat = 90.0 / 320.0
-
-    private var waypointRadius: CGFloat { canvasSize * Self.waypointRadiusRatio }
-    private var maxDeviation: CGFloat { canvasSize * Self.maxDeviationRatio }
-
     private(set) var currentIndex: Int = 0
-    private(set) var strokePath = Path()
     private(set) var coverage: Double = 0
     private(set) var isComplete = false
     private(set) var starsThisSession = 0
     private(set) var currentStrokeIndex = 0
+
+    /// How far along the active stroke the child has genuinely traced, in
+    /// points of arc length. Monotonic within a stroke.
+    private(set) var strokeProgress: CGFloat = 0
+
+    /// Drives the ghost-dot demo. `nil` when no demo is playing.
+    private(set) var demoProgress: CGFloat?
+
+    /// The ink, one path per stroke: finished strokes in full, the active one
+    /// trimmed to how far the child has genuinely got.
+    ///
+    /// Derived from progress rather than from raw touch positions, which is
+    /// what makes it *impossible* to leave ink somewhere that isn't part of the
+    /// letter. Drawing the finger's own path meant a touch accepted after an
+    /// off-path excursion was joined to the previous accepted one with a
+    /// straight line — so dragging from A's bottom-right to its middle-left
+    /// drew a bar that is not part of an A.
+    var tracedPaths: [Path] {
+        guard let geometry else { return [] }
+
+        // Finished letters draw every stroke in full.
+        //
+        // `finishStroke` folds the last stroke's length into `completedLength`
+        // and resets `strokeProgress` to zero, but for the *final* stroke it
+        // then completes without advancing `currentStrokeIndex` — so that
+        // stroke is still the current one, with zero progress, and would
+        // otherwise vanish at the exact moment the child succeeded.
+        if isComplete { return geometry.strokes.map(\.guidePath) }
+
+        return geometry.strokes.enumerated().map { index, stroke in
+            if index < currentStrokeIndex { return stroke.guidePath }
+            guard index == currentStrokeIndex, stroke.totalLength > 0 else { return Path() }
+
+            let fraction = min(max(strokeProgress / stroke.totalLength, 0), 1)
+            guard fraction > 0 else { return Path() }
+            return stroke.guidePath.trimmedPath(from: 0, to: fraction)
+        }
+    }
 
     /// Fired after completing a letter and when moving to a different one —
     /// a natural break where the daily allowance may end the session (spec
@@ -59,10 +89,26 @@ final class TraceLetterViewModel {
     private let haptics: HapticsService
 
     private var geometry: LetterTraceGeometry?
-    private var nextWaypointIndex = 0
-    private var totalWaypoints = 0
-    private var visitedWaypoints = 0
-    private var strokeLifted = true
+    private var totalLength: CGFloat = 0
+    private var completedLength: CGFloat = 0
+
+    /// Set while the finger is down. A stroke resumed after a lift has to
+    /// re-enter near where it stopped — see `addPoint`.
+    private var isFingerDown = false
+    private var lastPoint: CGPoint?
+
+    /// Set by any rejected touch. While true the next touch is gated as if the
+    /// finger had just come down — so wandering off the path and drifting back
+    /// mid-drag has to re-enter near where progress actually stopped, rather
+    /// than silently rejoining wherever the finger happens to be.
+    private var needsReentry = false
+
+    /// Consecutive rejected touches, for replaying the direction demo when a
+    /// child is clearly stuck. Reset by any accepted touch.
+    private var slipCount = 0
+    private var demoTask: Task<Void, Never>?
+
+    private var tolerances: TraceTolerances { TraceTolerances(canvasSize: canvasSize) }
 
     init(child: ChildProfile,
          speechService: SpeechServicing,
@@ -88,28 +134,53 @@ final class TraceLetterViewModel {
         "\(currentIndex + 1) of \(letters.count)"
     }
 
-    /// The dotted guide for every stroke in the letter, shown together so the
-    /// child can see the whole shape while working through it stroke by stroke.
+    var strokeCount: Int { geometry?.strokes.count ?? 0 }
+
+    /// Every stroke's dotted guide, shown together so the child can see the
+    /// whole shape while working through it one stroke at a time.
     var guidePaths: [Path] {
         geometry?.strokes.map(\.guidePath) ?? []
     }
 
-    /// Where the active stroke begins — a fixed marker distinct from the
-    /// moving target dot.
-    var startPoint: CGPoint? {
-        currentStroke?.waypoints.first
-    }
-
-    /// The next checkpoint the child needs to reach, nil once the whole
-    /// letter is complete or between strokes with nothing left to target.
-    var nextTargetPoint: CGPoint? {
-        guard let stroke = currentStroke, nextWaypointIndex < stroke.waypoints.count else { return nil }
-        return stroke.waypoints[nextWaypointIndex]
-    }
-
-    private var currentStroke: TraceStrokeGeometry? {
+    /// The stroke currently being traced.
+    var currentStroke: TraceStrokeGeometry? {
         guard let geometry, geometry.strokes.indices.contains(currentStrokeIndex) else { return nil }
         return geometry.strokes[currentStrokeIndex]
+    }
+
+    /// Where the active stroke begins.
+    var startPoint: CGPoint? { currentStroke?.start }
+
+    /// Where each stroke begins, for the stroke-order badges.
+    var strokeStartPoints: [CGPoint] {
+        geometry?.strokes.compactMap(\.start) ?? []
+    }
+
+    /// The point the child should be heading for next, a little ahead of where
+    /// they are, with the direction to travel in.
+    var nextTarget: (point: CGPoint, tangent: CGVector)? {
+        guard !isComplete, let stroke = currentStroke else { return nil }
+        let ahead = min(strokeProgress + tolerances.lookAhead * 0.6, stroke.totalLength)
+        guard let point = stroke.point(atArcLength: ahead),
+              let tangent = stroke.tangent(atArcLength: ahead) else { return nil }
+        return (point, tangent)
+    }
+
+    /// Arrowheads along every stroke's guide, so the direction to travel is
+    /// visible before the child starts rather than only once they are moving.
+    func directionMarkers(spacing: CGFloat = 64) -> [(point: CGPoint, tangent: CGVector, strokeIndex: Int)] {
+        guard let geometry else { return [] }
+
+        return geometry.strokes.enumerated().flatMap { index, stroke -> [(CGPoint, CGVector, Int)] in
+            guard stroke.totalLength > 0 else { return [] }
+            // Start half a spacing in so an arrow never sits on top of the
+            // start badge or the end of the stroke.
+            return stride(from: spacing / 2, to: stroke.totalLength, by: spacing).compactMap { distance in
+                guard let point = stroke.point(atArcLength: distance),
+                      let tangent = stroke.tangent(atArcLength: distance) else { return nil }
+                return (point, tangent, index)
+            }
+        }
     }
 
     // MARK: - Lifecycle
@@ -120,6 +191,8 @@ final class TraceLetterViewModel {
     }
 
     func onDisappear() {
+        demoTask?.cancel()
+        demoTask = nil
         speechService.stop()
     }
 
@@ -141,6 +214,7 @@ final class TraceLetterViewModel {
         canvasSize = resolved
         rebuildGeometry()
         clear()
+        playDemo()
     }
 
     func next() {
@@ -164,38 +238,172 @@ final class TraceLetterViewModel {
     func addPoint(_ point: CGPoint) {
         guard !isComplete, let stroke = currentStroke else { return }
 
-        if strokeLifted {
-            strokePath.move(to: point)
-            strokeLifted = false
-        } else {
-            strokePath.addLine(to: point)
+        // Any touch cancels the demo — it must never fight the child's input.
+        cancelDemo()
+
+        // A lift is inferred from the geometry as well as taken from the
+        // gesture. `endStroke` fires on `onEnded`, but a cancelled or
+        // interrupted gesture can skip it, and if `isFingerDown` gets stuck
+        // true every later touch would bypass the resume gate — which is
+        // exactly the tap-tap-tap hole this validator exists to close. A jump
+        // no finger could make between two touch events means the finger left
+        // the glass, whatever the gesture system reported.
+        let jumped = lastPoint.map { distance(point, $0) > tolerances.liftJump } ?? false
+        let isTouchDown = !isFingerDown || jumped || needsReentry
+        isFingerDown = true
+        defer { lastPoint = point }
+
+        guard gateEntry(point, stroke: stroke, isTouchDown: isTouchDown) else {
+            // Not a valid place to be drawing — no ink, no progress. The
+            // absence of progress is the feedback (spec F4: non-punitive).
+            registerSlip()
+            return
         }
 
-        registerTouch(point, stroke: stroke)
+        guard let advanced = advance(to: point, stroke: stroke) else {
+            registerSlip()
+            return
+        }
+
+        needsReentry = false
+        slipCount = 0
+
+        if advanced {
+            haptics.tap()
+        }
+
+        if strokeProgress >= stroke.totalLength * tolerances.completionFraction {
+            finishStroke(stroke)
+        }
     }
 
     func endStroke() {
-        strokeLifted = true
-        guard !isComplete, let stroke = currentStroke else { return }
-
-        // Finished this stroke's checkpoints while the finger was still down —
-        // now that it's lifted, unlock the next stroke (if there is one).
-        guard nextWaypointIndex >= stroke.waypoints.count,
-              let geometry, currentStrokeIndex < geometry.strokes.count - 1
-        else { return }
-
-        currentStrokeIndex += 1
-        nextWaypointIndex = 0
+        isFingerDown = false
+        lastPoint = nil
+        // Progress is deliberately kept: a lifted finger may resume, but only
+        // near where it stopped. See `gateEntry`.
     }
 
     func clear() {
-        strokePath = Path()
         currentStrokeIndex = 0
-        nextWaypointIndex = 0
-        visitedWaypoints = 0
+        strokeProgress = 0
+        completedLength = 0
         coverage = 0
         isComplete = false
-        strokeLifted = true
+        isFingerDown = false
+        lastPoint = nil
+        needsReentry = false
+        slipCount = 0
+    }
+
+    // MARK: - Validation
+
+    /// Decides whether the finger is somewhere it is allowed to be drawing:
+    /// at the start of a fresh stroke, or back where it left off after a lift.
+    private func gateEntry(_ point: CGPoint,
+                           stroke: TraceStrokeGeometry,
+                           isTouchDown: Bool) -> Bool {
+        guard isTouchDown else { return true }
+
+        if strokeProgress <= 0 {
+            // A stroke has to be started at its beginning, otherwise a child
+            // can begin anywhere and the direction cues mean nothing.
+            guard let start = stroke.start else { return false }
+            return distance(point, start) <= tolerances.startRadius
+        }
+
+        // Mid-stroke touch-down: only counts near where the finger left off.
+        // This is what makes tapping each part of a stroke in turn fail while
+        // still forgiving a grip that slipped.
+        guard let resumePoint = stroke.point(atArcLength: strokeProgress) else { return false }
+        return distance(point, resumePoint) <= tolerances.resumeRadius
+    }
+
+    /// Returns nil when the touch earns nothing, or whether it moved progress.
+    private func advance(to point: CGPoint, stroke: TraceStrokeGeometry) -> Bool? {
+        let window = (strokeProgress - tolerances.lookBehind)...(strokeProgress + tolerances.lookAhead)
+
+        guard let hit = stroke.project(point, within: window),
+              hit.distance <= tolerances.corridor else { return nil }
+
+        // Direction: the finger must be travelling with the stroke, not against
+        // it. Skipped for movements too small to have a meaningful direction.
+        if let lastPoint {
+            let movement = CGVector(dx: point.x - lastPoint.x, dy: point.y - lastPoint.y)
+            let travelled = hypot(movement.dx, movement.dy)
+
+            if travelled >= tolerances.minimumMovement {
+                let agreement = (movement.dx * hit.tangent.dx + movement.dy * hit.tangent.dy) / travelled
+                guard agreement > tolerances.directionAgreement else { return nil }
+            }
+        }
+
+        let didAdvance = hit.arcLength > strokeProgress
+        strokeProgress = max(strokeProgress, hit.arcLength)
+        updateCoverage()
+        return didAdvance
+    }
+
+    private func registerSlip() {
+        needsReentry = true
+        slipCount += 1
+        guard slipCount >= TraceTolerances.slipsBeforeReplay else { return }
+        slipCount = 0
+        haptics.gentleMiss()
+        playDemo()
+    }
+
+    private func finishStroke(_ stroke: TraceStrokeGeometry) {
+        completedLength += stroke.totalLength
+        strokeProgress = 0
+        updateCoverage()
+
+        guard let geometry, currentStrokeIndex < geometry.strokes.count - 1 else {
+            complete()
+            return
+        }
+
+        currentStrokeIndex += 1
+        isFingerDown = false
+        lastPoint = nil
+        playDemo()
+    }
+
+    private func updateCoverage() {
+        guard totalLength > 0 else { return coverage = 0 }
+        coverage = min(1, Double((completedLength + strokeProgress) / totalLength))
+    }
+
+    // MARK: - Direction demo
+
+    /// Walks a ghost dot along the active stroke to show which way to go.
+    /// Played when a letter appears and again when a child is clearly stuck.
+    func playDemo() {
+        guard let stroke = currentStroke, stroke.totalLength > 0, !isComplete else { return }
+
+        demoTask?.cancel()
+        demoTask = Task { [weak self] in
+            guard let self else { return }
+
+            let steps = 60
+            for step in 0...steps {
+                guard !Task.isCancelled else { return }
+                demoProgress = stroke.totalLength * CGFloat(step) / CGFloat(steps)
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+
+            guard !Task.isCancelled else { return }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            demoProgress = nil
+        }
+    }
+
+    private func cancelDemo() {
+        guard demoProgress != nil || demoTask != nil else { return }
+        demoTask?.cancel()
+        demoTask = nil
+        demoProgress = nil
     }
 
     // MARK: - Private
@@ -205,35 +413,18 @@ final class TraceLetterViewModel {
         rebuildGeometry()
         clear()
         speechService.speak("Trace the letter \(currentLetter.uppercase)")
+        playDemo()
     }
 
     private func rebuildGeometry() {
         guard let currentLetter else { return }
         geometry = TracePathSampler.geometry(for: currentLetter.id, canvasSize: canvasSize)
-        totalWaypoints = geometry?.strokes.reduce(0) { $0 + $1.waypoints.count } ?? 0
-    }
-
-    private func registerTouch(_ point: CGPoint, stroke: TraceStrokeGeometry) {
-        guard nextWaypointIndex < stroke.waypoints.count else { return }
-        guard nearestDistance(from: point, in: stroke.densePoints) <= maxDeviation else { return }
-
-        let target = stroke.waypoints[nextWaypointIndex]
-        guard squaredDistance(point, target) <= waypointRadius * waypointRadius else { return }
-
-        nextWaypointIndex += 1
-        visitedWaypoints += 1
-        coverage = totalWaypoints > 0 ? Double(visitedWaypoints) / Double(totalWaypoints) : 0
-        haptics.tap()
-
-        let isLastStroke = currentStrokeIndex == (geometry?.strokes.count ?? 1) - 1
-        let strokeFinished = nextWaypointIndex >= stroke.waypoints.count
-        if strokeFinished, isLastStroke {
-            complete()
-        }
+        totalLength = geometry?.strokes.reduce(0) { $0 + $1.totalLength } ?? 0
     }
 
     private func complete() {
         isComplete = true
+        cancelDemo()
         starsThisSession += 1
         rewardService.awardStars(1, to: child)
         haptics.success()
@@ -243,13 +434,7 @@ final class TraceLetterViewModel {
         onSafeStoppingPoint?()
     }
 
-    private func nearestDistance(from point: CGPoint, in path: [CGPoint]) -> CGFloat {
-        path.map { hypot($0.x - point.x, $0.y - point.y) }.min() ?? .greatestFiniteMagnitude
-    }
-
-    private func squaredDistance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
-        let dx = a.x - b.x
-        let dy = a.y - b.y
-        return dx * dx + dy * dy
+    private func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        hypot(a.x - b.x, a.y - b.y)
     }
 }

@@ -53,6 +53,12 @@ enum LetterTracePathContent {
     }
 
     /// The full closed loop shared by O and Q.
+    ///
+    /// Runs **clockwise** — top, right, down and round — by deliberate choice.
+    /// Note this is the opposite hand motion to `roundArc`, which C and G trace
+    /// counter-clockwise, so the two curve families teach different directions.
+    /// Now that tracing enforces direction, whichever way these are authored is
+    /// what a child is taught, so keep that in mind before editing.
     private static var circle: [CGPoint] {
         [
             point(center, top), point(0.64, 0.19), point(0.72, 0.32), point(right, mid),
@@ -122,14 +128,25 @@ enum LetterTracePathContent {
         "L": LetterTracePath(strokes: [
             TraceStroke([point(left, top), point(left, base), point(right, base)])
         ]),
+        // Starts at the top-left, like every other stem in this set. It was
+        // authored from the baseline upwards, which no handwriting curriculum
+        // teaches and which now that direction is enforced would have children
+        // pushing up into the first stroke instead of pulling down.
         "M": LetterTracePath(strokes: [
+            TraceStroke([point(left, top), point(left, base)]),
             TraceStroke([
-                point(left, base), point(left, top),
-                point(center, 0.58), point(right, top), point(right, base)
+                point(left, top), point(center, 0.58), point(right, top), point(right, base)
             ])
         ]),
+        // Pull the left stem down, then the diagonal down to the baseline, then
+        // the right stem **upwards** — the diagonal leaves the pen at the
+        // bottom right, so carrying on up from there is the continuous motion a
+        // hand actually makes. Drawing that last stem top-down would mean
+        // lifting back over the letter first.
         "N": LetterTracePath(strokes: [
-            TraceStroke([point(left, base), point(left, top), point(right, base), point(right, top)])
+            TraceStroke([point(left, top), point(left, base)]),
+            TraceStroke([point(left, top), point(right, base)]),
+            TraceStroke([point(right, base), point(right, top)])
         ]),
         "O": LetterTracePath(strokes: [
             TraceStroke(circle, smooth: true)

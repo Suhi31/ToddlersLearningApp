@@ -5,8 +5,15 @@
 //  Created by Nusrat Jahan on 7/8/26.
 //
 
+import OSLog
 import SwiftData
 import SwiftUI
+
+/// Matches the subsystem/category convention every service in this app uses
+/// (see `ProgressService`, `RewardService`, `SessionTimerService`) — the
+/// launch path was the one spot still using a bare `print`, which is
+/// silently discarded in a release build.
+private let logger = Logger(subsystem: "com.toddlerlearningapp", category: "storage")
 
 @main
 struct ToddlerLearningAppApp: App {
@@ -34,13 +41,13 @@ struct ToddlerLearningAppApp: App {
     /// working and lets the UI say what happened.
     private static func makeContainer() -> (ModelContainer, Bool) {
         let schema = Schema([
-            ChildProfile.self, LetterProgress.self, NumberProgress.self, SessionRecord.self
+            ChildProfile.self, LetterProgress.self, NumberProgress.self, TraceProgress.self, SessionRecord.self
         ])
 
         do {
             return (try ModelContainer(for: schema), false)
         } catch {
-            print("Persistent store unavailable, falling back to in-memory: \(error)")
+            logger.error("Persistent store unavailable, falling back to in-memory: \(error.localizedDescription, privacy: .public)")
         }
 
         do {

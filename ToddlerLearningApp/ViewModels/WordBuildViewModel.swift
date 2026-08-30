@@ -25,11 +25,22 @@ final class WordBuildViewModel {
         var isUsed = false
     }
 
+    /// Words to solve per round (spec F27) — a finish line rather than the
+    /// activity running forever until the child backs out.
+    let wordsPerRound: Int
+
     private(set) var currentWord: WordItem
     private(set) var scrambledLetters: [ScrambledLetter] = []
     private(set) var filledLetters: [String?] = []
     private(set) var isComplete = false
     private(set) var starsThisSession = 0
+
+    /// Words solved so far in the current round.
+    private(set) var wordsCompleted = 0
+
+    /// Set once `wordsCompleted` reaches `wordsPerRound`. The view shows a
+    /// celebration instead of the next word; `startNewRound()` clears it.
+    private(set) var isRoundComplete = false
 
     /// Same safe-stopping-point pattern as the other activity screens (spec F5).
     var onSafeStoppingPoint: (() -> Void)?
@@ -44,11 +55,13 @@ final class WordBuildViewModel {
     init(child: ChildProfile,
          speechService: SpeechServicing,
          rewardService: RewardService,
-         haptics: HapticsService) {
+         haptics: HapticsService,
+         wordsPerRound: Int = 5) {
         self.child = child
         self.speechService = speechService
         self.rewardService = rewardService
         self.haptics = haptics
+        self.wordsPerRound = wordsPerRound
         self.currentWord = WordBuildContent.words.randomElement() ?? WordBuildContent.words[0]
         setUp(for: currentWord)
     }
@@ -98,6 +111,14 @@ final class WordBuildViewModel {
         }
     }
 
+    /// Starts a fresh round from zero — the "Play again" action on the
+    /// round-complete celebration.
+    func startNewRound() {
+        wordsCompleted = 0
+        isRoundComplete = false
+        nextWord()
+    }
+
     // MARK: - Flow
 
     private func complete() {
@@ -106,6 +127,13 @@ final class WordBuildViewModel {
         rewardService.awardStars(1, to: child)
         haptics.success()
         speechService.speak("\(currentWord.id.capitalized)! Great job!")
+
+        wordsCompleted += 1
+        guard wordsCompleted < wordsPerRound else {
+            isRoundComplete = true
+            onSafeStoppingPoint?()
+            return
+        }
 
         pendingTask?.cancel()
         pendingTask = Task { [weak self] in

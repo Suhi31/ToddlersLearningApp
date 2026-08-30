@@ -21,6 +21,7 @@ struct ChildPickerView: View {
     @State private var isAdding = false
     @State private var newName = ""
     @State private var newAge = 3
+    @State private var saveErrorMessage: String?
 
     init(coordinator: AppCoordinator) {
         self.coordinator = coordinator
@@ -80,12 +81,28 @@ struct ChildPickerView: View {
                 }
             }
         }
+        .alert("Couldn't Add", isPresented: Binding(
+            get: { saveErrorMessage != nil },
+            set: { if !$0 { saveErrorMessage = nil } }
+        ), presenting: saveErrorMessage) { _ in
+            Button("OK") { saveErrorMessage = nil }
+        } message: { message in
+            Text(message)
+        }
     }
 
     private func addChild() {
         guard !newName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        // Best-effort here; SettingsView is the screen that surfaces the error.
-        _ = try? coordinator.dependencies.childProfileService.create(name: newName, age: newAge)
+
+        do {
+            try coordinator.dependencies.childProfileService.create(name: newName, age: newAge)
+        } catch {
+            // The parent is standing right here in this sheet — leaving the
+            // failure to be discovered later in Settings meant "Add" silently
+            // did nothing and the new row just never appeared.
+            saveErrorMessage = "Couldn't add that child. Please try again."
+            return
+        }
 
         newName = ""
         newAge = 3

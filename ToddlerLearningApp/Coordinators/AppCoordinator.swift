@@ -79,6 +79,14 @@ final class AppCoordinator: Coordinator {
 
     func resumeSession() {
         guard let activeChild else { return }
+        // Re-arm the wind-down: without this, a child who dismissed "All
+        // done" earlier today, backgrounded the app mid-activity while still
+        // over the limit, and returned would sail past the next safe
+        // stopping point — `hasAcknowledgedTimeUp` was still `true` from
+        // before, so `checkTimeLimitAtSafePoint()` would stay silent even
+        // though the allowance is (still) exhausted. Resetting it here means
+        // every foreground return gets a fresh chance to show the wind-down.
+        hasAcknowledgedTimeUp = false
         dependencies.sessionTimer.begin(for: activeChild)
     }
 
@@ -108,6 +116,23 @@ final class AppCoordinator: Coordinator {
         popToRoot()
     }
 
+    /// The only way any Home activity tile starts an activity — never
+    /// `push(_:)` directly. Home is always a safe stopping point (spec F5),
+    /// so this is where the allowance is actually enforced: without it, a
+    /// child who dismissed "All done" could immediately tap straight back
+    /// into a fresh activity, since nothing else stood between Home and
+    /// `push(_:)`. Checked directly against `hasReachedLimit`, not
+    /// `hasAcknowledgedTimeUp` — that flag only suppresses the *automatic*
+    /// re-check in `checkTimeLimitAtSafePoint()` right after a dismissal, and
+    /// must not also suppress a new, explicit attempt to start something.
+    func startActivity(_ route: Route) {
+        guard !dependencies.sessionTimer.hasReachedLimit else {
+            showTimeUp = true
+            return
+        }
+        push(route)
+    }
+
     // MARK: - Gated navigation
 
     /// The only way into the parent area. Routing it through here means no
@@ -129,157 +154,160 @@ final class AppCoordinator: Coordinator {
 
     @ViewBuilder
     func destination(for route: Route) -> some View {
-        switch route {
-        case .learnAlphabet:
-            LearnAlphabetView(
-                viewModel: LearnAlphabetViewModel(
-                    child: requireChild(),
-                    speechService: dependencies.speechService,
-                    progressService: dependencies.progressService,
-                    haptics: dependencies.haptics
-                ),
-                coordinator: self
-            )
-
-        case .learnAlphabetDetail(let letterID):
-            LearnAlphabetView(
-                viewModel: LearnAlphabetViewModel(
-                    child: requireChild(),
-                    startingItem: AlphabetContent.letter(id: letterID),
-                    speechService: dependencies.speechService,
-                    progressService: dependencies.progressService,
-                    haptics: dependencies.haptics
-                ),
-                coordinator: self
-            )
-
-        case .traceLetters:
-            TraceLetterView(
-                viewModel: TraceLetterViewModel(
-                    child: requireChild(),
-                    speechService: dependencies.speechService,
-                    rewardService: dependencies.rewardService,
-                    haptics: dependencies.haptics
-                ),
-                coordinator: self
-            )
-
-        case .quiz:
-            QuizView(
-                viewModel: QuizViewModel(
-                    child: requireChild(),
-                    speechService: dependencies.speechService,
-                    progressService: dependencies.progressService,
-                    rewardService: dependencies.rewardService,
-                    haptics: dependencies.haptics
-                ),
-                coordinator: self
-            )
-
-        case .learnNumbers:
-            LearnNumbersView(
-                viewModel: LearnNumbersViewModel(
-                    child: requireChild(),
-                    speechService: dependencies.speechService,
-                    progressService: dependencies.progressService,
-                    haptics: dependencies.haptics
-                ),
-                coordinator: self
-            )
-
-        case .learnNumbersDetail(let numberID):
-            LearnNumbersView(
-                viewModel: LearnNumbersViewModel(
-                    child: requireChild(),
-                    startingItem: NumberContent.number(id: numberID),
-                    speechService: dependencies.speechService,
-                    progressService: dependencies.progressService,
-                    haptics: dependencies.haptics
-                ),
-                coordinator: self
-            )
-
-        case .numberQuiz:
-            NumberQuizView(
-                viewModel: NumberQuizViewModel(
-                    child: requireChild(),
-                    speechService: dependencies.speechService,
-                    progressService: dependencies.progressService,
-                    rewardService: dependencies.rewardService,
-                    haptics: dependencies.haptics
-                ),
-                coordinator: self
-            )
-
-        case .wordBuild:
-            WordBuildView(
-                viewModel: WordBuildViewModel(
-                    child: requireChild(),
-                    speechService: dependencies.speechService,
-                    rewardService: dependencies.rewardService,
-                    haptics: dependencies.haptics
-                ),
-                coordinator: self
-            )
-
-        case .rhymes:
-            RhymesView(
-                viewModel: RhymesViewModel(haptics: dependencies.haptics),
-                coordinator: self
-            )
-
-        case .rhymeDetail(let id):
-            if let rhyme = RhymeContent.rhyme(id: id) {
-                RhymeDetailView(
-                    viewModel: RhymeDetailViewModel(
-                        rhyme: rhyme,
+        // Every route below but the three parent-area/settings ones needs an
+        // active child, and in ordinary use one always exists by the time a
+        // route is reachable — onboarding gates everything. This guard is for
+        // the one abnormal case: the active child being deleted (or a switch
+        // in progress) while a route for it is still mid-transition on the
+        // navigation stack. That used to be a `preconditionFailure` crash;
+        // `.rhymeDetail` below already shows the better alternative for a
+        // route whose target has gone missing.
+        if let activeChild {
+            switch route {
+            case .learnAlphabet:
+                LearnAlphabetView(
+                    viewModel: LearnAlphabetViewModel(
+                        child: activeChild,
                         speechService: dependencies.speechService,
-                        rhymeAudioService: dependencies.rhymeAudioService,
+                        progressService: dependencies.progressService,
                         haptics: dependencies.haptics
                     ),
                     coordinator: self
                 )
-            } else {
-                // Every other case in this switch is total. Without this one a
-                // rhyme id that no longer resolves pushes a blank screen the
-                // child can only back out of.
-                ContentUnavailableView("That rhyme isn't here",
-                                       systemImage: "music.note")
-            }
 
-        case .rewards:
-            RewardsView(
-                viewModel: RewardsViewModel(
-                    child: requireChild(),
-                    rewardService: dependencies.rewardService
+            case .learnAlphabetDetail(let letterID):
+                LearnAlphabetView(
+                    viewModel: LearnAlphabetViewModel(
+                        child: activeChild,
+                        startingItem: AlphabetContent.letter(id: letterID),
+                        speechService: dependencies.speechService,
+                        progressService: dependencies.progressService,
+                        haptics: dependencies.haptics
+                    ),
+                    coordinator: self
                 )
-            )
 
-        case .parentGate:
-            ParentGateView(coordinator: self)
+            case .traceLetters:
+                TraceLetterView(
+                    viewModel: TraceLetterViewModel(
+                        child: activeChild,
+                        speechService: dependencies.speechService,
+                        rewardService: dependencies.rewardService,
+                        progressService: dependencies.progressService,
+                        haptics: dependencies.haptics
+                    ),
+                    coordinator: self
+                )
 
-        case .parentDashboard:
-            ParentDashboardView(
-                viewModel: ParentDashboardViewModel(
-                    child: requireChild(),
-                    sessionTimer: dependencies.sessionTimer
-                ),
-                coordinator: self
-            )
+            case .quiz:
+                QuizView(
+                    viewModel: QuizViewModel(
+                        child: activeChild,
+                        speechService: dependencies.speechService,
+                        progressService: dependencies.progressService,
+                        rewardService: dependencies.rewardService,
+                        haptics: dependencies.haptics
+                    ),
+                    coordinator: self
+                )
 
-        case .settings:
-            SettingsView(coordinator: self)
+            case .learnNumbers:
+                LearnNumbersView(
+                    viewModel: LearnNumbersViewModel(
+                        child: activeChild,
+                        speechService: dependencies.speechService,
+                        progressService: dependencies.progressService,
+                        haptics: dependencies.haptics
+                    ),
+                    coordinator: self
+                )
+
+            case .learnNumbersDetail(let numberID):
+                LearnNumbersView(
+                    viewModel: LearnNumbersViewModel(
+                        child: activeChild,
+                        startingItem: NumberContent.number(id: numberID),
+                        speechService: dependencies.speechService,
+                        progressService: dependencies.progressService,
+                        haptics: dependencies.haptics
+                    ),
+                    coordinator: self
+                )
+
+            case .numberQuiz:
+                NumberQuizView(
+                    viewModel: NumberQuizViewModel(
+                        child: activeChild,
+                        speechService: dependencies.speechService,
+                        progressService: dependencies.progressService,
+                        rewardService: dependencies.rewardService,
+                        haptics: dependencies.haptics
+                    ),
+                    coordinator: self
+                )
+
+            case .wordBuild:
+                WordBuildView(
+                    viewModel: WordBuildViewModel(
+                        child: activeChild,
+                        speechService: dependencies.speechService,
+                        rewardService: dependencies.rewardService,
+                        haptics: dependencies.haptics
+                    ),
+                    coordinator: self
+                )
+
+            case .rhymes:
+                RhymesView(
+                    viewModel: RhymesViewModel(haptics: dependencies.haptics),
+                    coordinator: self
+                )
+
+            case .rhymeDetail(let id):
+                if let rhyme = RhymeContent.rhyme(id: id) {
+                    RhymeDetailView(
+                        viewModel: RhymeDetailViewModel(
+                            rhyme: rhyme,
+                            speechService: dependencies.speechService,
+                            rhymeAudioService: dependencies.rhymeAudioService,
+                            haptics: dependencies.haptics
+                        ),
+                        coordinator: self
+                    )
+                } else {
+                    // Every other case in this switch is total. Without this one a
+                    // rhyme id that no longer resolves pushes a blank screen the
+                    // child can only back out of.
+                    ContentUnavailableView("That rhyme isn't here",
+                                           systemImage: "music.note")
+                }
+
+            case .rewards:
+                RewardsView(
+                    viewModel: RewardsViewModel(
+                        child: activeChild,
+                        rewardService: dependencies.rewardService
+                    )
+                )
+
+            case .parentGate:
+                ParentGateView(coordinator: self)
+
+            case .parentDashboard:
+                ParentDashboardView(
+                    viewModel: ParentDashboardViewModel(
+                        child: activeChild,
+                        sessionTimer: dependencies.sessionTimer
+                    ),
+                    coordinator: self
+                )
+
+            case .settings:
+                SettingsView(coordinator: self)
+            }
+        } else {
+            ContentUnavailableView("Nothing to show", systemImage: "person.crop.circle.badge.exclamationmark")
         }
-    }
-
-    /// Every destination requires an active child, and every destination is only
-    /// reachable after onboarding — so this is a programmer error, not a runtime
-    /// condition worth threading optionals through the whole view layer for.
-    private func requireChild() -> ChildProfile {
-        guard let activeChild else {
-            preconditionFailure("Navigated to a child destination with no active child")
-        }
-        return activeChild
     }
 
     // MARK: - Resuming across relaunch (spec F1)

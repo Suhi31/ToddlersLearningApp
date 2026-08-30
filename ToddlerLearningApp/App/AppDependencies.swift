@@ -39,7 +39,7 @@ final class AppDependencies {
     static func preview() -> AppDependencies {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try! ModelContainer(
-            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, SessionRecord.self,
+            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, TraceProgress.self, SessionRecord.self,
             configurations: configuration
         )
         return AppDependencies(modelContext: container.mainContext)

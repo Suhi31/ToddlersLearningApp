@@ -39,6 +39,20 @@ final class TraceLetterViewModel {
     private(set) var starsThisSession = 0
     private(set) var currentStrokeIndex = 0
 
+    /// Letters to finish per round (spec F27) — a finish line rather than
+    /// this activity running forever. Trace is browse-shaped, not
+    /// question-shaped, so a round is simply *some* `lettersPerRound`
+    /// completions in whatever order the child pages to them, not a fixed
+    /// sequence.
+    let lettersPerRound: Int
+
+    /// Letters completed so far in the current round.
+    private(set) var lettersCompletedThisRound = 0
+
+    /// Set once `lettersCompletedThisRound` reaches `lettersPerRound`. The
+    /// view shows a celebration; `startNewRound()` clears it.
+    private(set) var isRoundComplete = false
+
     /// How far along the active stroke the child has genuinely traced, in
     /// points of arc length. Monotonic within a stroke.
     private(set) var strokeProgress: CGFloat = 0
@@ -86,6 +100,7 @@ final class TraceLetterViewModel {
     let child: ChildProfile
     private let speechService: SpeechServicing
     private let rewardService: RewardService
+    private let progressService: ProgressService
     private let haptics: HapticsService
 
     private var geometry: LetterTraceGeometry?
@@ -113,11 +128,15 @@ final class TraceLetterViewModel {
     init(child: ChildProfile,
          speechService: SpeechServicing,
          rewardService: RewardService,
-         haptics: HapticsService) {
+         progressService: ProgressService,
+         haptics: HapticsService,
+         lettersPerRound: Int = 5) {
         self.child = child
         self.speechService = speechService
         self.rewardService = rewardService
+        self.progressService = progressService
         self.haptics = haptics
+        self.lettersPerRound = lettersPerRound
     }
 
     var letters: [Letter] { AlphabetContent.letters }
@@ -137,9 +156,10 @@ final class TraceLetterViewModel {
     var strokeCount: Int { geometry?.strokes.count ?? 0 }
 
     /// Every stroke's dotted guide, shown together so the child can see the
-    /// whole shape while working through it one stroke at a time.
+    /// whole shape while working through it one stroke at a time. Precomputed
+    /// on `LetterTraceGeometry` — this just forwards it.
     var guidePaths: [Path] {
-        geometry?.strokes.map(\.guidePath) ?? []
+        geometry?.guidePaths ?? []
     }
 
     /// The stroke currently being traced.
@@ -168,18 +188,14 @@ final class TraceLetterViewModel {
 
     /// Arrowheads along every stroke's guide, so the direction to travel is
     /// visible before the child starts rather than only once they are moving.
-    func directionMarkers(spacing: CGFloat = 64) -> [(point: CGPoint, tangent: CGVector, strokeIndex: Int)] {
+    /// Precomputed per stroke on `TraceStrokeGeometry` — this only flattens
+    /// them and attaches the stroke index, instead of recomputing every
+    /// marker's point and tangent from a `Canvas` render closure on every
+    /// touch point at 60 Hz.
+    var directionMarkers: [(point: CGPoint, tangent: CGVector, strokeIndex: Int)] {
         guard let geometry else { return [] }
-
-        return geometry.strokes.enumerated().flatMap { index, stroke -> [(CGPoint, CGVector, Int)] in
-            guard stroke.totalLength > 0 else { return [] }
-            // Start half a spacing in so an arrow never sits on top of the
-            // start badge or the end of the stroke.
-            return stride(from: spacing / 2, to: stroke.totalLength, by: spacing).compactMap { distance in
-                guard let point = stroke.point(atArcLength: distance),
-                      let tangent = stroke.tangent(atArcLength: distance) else { return nil }
-                return (point, tangent, index)
-            }
+        return geometry.strokes.enumerated().flatMap { index, stroke in
+            stroke.directionMarkers.map { (point: $0.point, tangent: $0.tangent, strokeIndex: index) }
         }
     }
 
@@ -282,6 +298,21 @@ final class TraceLetterViewModel {
         lastPoint = nil
         // Progress is deliberately kept: a lifted finger may resume, but only
         // near where it stopped. See `gateEntry`.
+    }
+
+    /// The "Try again" button's action (spec F28) — distinct from `clear()`,
+    /// which is also called internally on canvas-size changes and must never
+    /// itself record a miss just because the device rotated. Only counts as
+    /// a miss when there was genuine progress to abandon: restarting a fresh,
+    /// untouched letter — or one already completed — isn't one. The 25%
+    /// threshold is a judgement call, not a spec'd number: low enough that a
+    /// child who barely started isn't penalised for exploring, high enough
+    /// that giving up partway through registers as the shaky attempt it was.
+    func tryAgain() {
+        if !isComplete, coverage > 0.25, let currentLetter {
+            progressService.recordTrace(child: child, letterID: currentLetter.id, completed: false)
+        }
+        clear()
     }
 
     func clear() {
@@ -422,6 +453,15 @@ final class TraceLetterViewModel {
         totalLength = geometry?.strokes.reduce(0) { $0 + $1.totalLength } ?? 0
     }
 
+    /// Starts a fresh round from zero — the "Play again" action on the
+    /// round-complete celebration. Trace is browse-shaped: this leaves the
+    /// child on whatever letter they're viewing rather than picking a new
+    /// one, since paging to the next letter is already how the activity works.
+    func startNewRound() {
+        lettersCompletedThisRound = 0
+        isRoundComplete = false
+    }
+
     private func complete() {
         isComplete = true
         cancelDemo()
@@ -430,7 +470,14 @@ final class TraceLetterViewModel {
         haptics.success()
         if let currentLetter {
             speechService.speak("Great tracing! That's \(currentLetter.uppercase).")
+            progressService.recordTrace(child: child, letterID: currentLetter.id, completed: true)
         }
+
+        lettersCompletedThisRound += 1
+        if lettersCompletedThisRound >= lettersPerRound {
+            isRoundComplete = true
+        }
+
         onSafeStoppingPoint?()
     }
 

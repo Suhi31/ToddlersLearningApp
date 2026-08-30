@@ -21,6 +21,7 @@ struct ChildFormFields: View {
         TextField("Name", text: $name)
             .foregroundStyle(AppColors.title)
             .textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
 
         Picker("Age", selection: $age) {
             ForEach(Self.ageOptions, id: \.age) { option in

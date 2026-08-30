@@ -59,11 +59,15 @@ final class SessionTimerService {
         self.child = child
         secondsPlayedToday = Self.secondsPlayed(by: child, on: .now)
         evaluateLimit()
-        // Otherwise every foreground bounce past the limit (background then
-        // reopen) creates a fresh SessionRecord and restarts the ticker for
-        // one tick before evaluateLimit() stops it again — harmless in
-        // magnitude but pollutes the dashboard's session count.
-        guard !hasReachedLimit else { return }
+        // Past-limit foreground time still counts (see `evaluateLimit`), so
+        // this used to bail out here entirely once the limit was reached —
+        // which was the bug: it meant a session record, once past the limit,
+        // was never reopened, so "today" on the dashboard froze at exactly
+        // the limit no matter how much longer the child kept playing. Now a
+        // past-limit foreground bounce opens/resumes a session exactly like
+        // any other; the allowance is enforced by the coordinator
+        // (`startActivity`/`checkTimeLimitAtSafePoint`), not by starving the
+        // clock.
 
         // A session left open by `suspend()` is resumed rather than replaced.
         // Opening a second record here would both inflate the session count and
@@ -148,18 +152,23 @@ final class SessionTimerService {
             resumeTickerIfNeeded()
             return
         }
-        if secondsPlayedToday >= limitSeconds {
-            hasReachedLimit = true
-            stopTicker()
-        } else {
-            hasReachedLimit = false
-            resumeTickerIfNeeded()
-        }
+        // The ticker deliberately keeps running past the limit — reaching it
+        // no longer stops the clock, only `hasReachedLimit` flips. Stopping
+        // the ticker here used to freeze `secondsPlayedToday` (and the
+        // dashboard's "today" figure) at exactly the limit no matter how much
+        // longer a child kept playing, since actually *ending* the session is
+        // the coordinator's job (`startActivity`/`checkTimeLimitAtSafePoint`),
+        // not this service's.
+        hasReachedLimit = secondsPlayedToday >= limitSeconds
+        resumeTickerIfNeeded()
     }
 
-    /// The ticker is stopped when the allowance runs out. If the allowance is
-    /// later raised or switched off from the parent dashboard, counting has to
-    /// pick up again or the rest of the session goes unrecorded.
+    /// Restarts the ticker if something previously stopped it (`pause()`,
+    /// `suspend()`) while a session is meant to be running. In ordinary
+    /// operation the ticker no longer stops just because the limit was
+    /// reached, so this is mostly a safety net for those other paths — kept
+    /// rather than inlined since a caller shouldn't have to know it's a no-op
+    /// most of the time.
     ///
     /// Deliberately a no-op unless a session is already running, so the
     /// `evaluateLimit()` inside `begin(for:)` — which runs before `isRunning`
@@ -203,5 +212,19 @@ final class SessionTimerService {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
             return (day, secondsPlayed(by: child, on: day))
         }
+    }
+
+    /// Sessions started in the last `days` days — windowed to match
+    /// `dailyTotals` rather than `child.sessions.count`, which is every
+    /// session ever recorded. Printed on the dashboard between "today" and
+    /// "this week", an all-time figure there read unambiguously (but
+    /// wrongly) as "sessions this week".
+    static func sessionCount(for child: ChildProfile, days: Int = 7) -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        guard let windowStart = calendar.date(byAdding: .day, value: -(days - 1), to: today) else {
+            return child.sessions.count
+        }
+        return child.sessions.count { $0.startedAt >= windowStart }
     }
 }

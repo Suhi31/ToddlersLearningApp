@@ -100,7 +100,33 @@ final class ParentDashboardViewModel {
         )
     }
 
-    var summaries: [DomainSummary] { [letterSummary, numberSummary] }
+    /// Spec F28. Tracing-domain twin of `letterSummary` — gated to the same
+    /// `unlockedLetters` set as the quiz/recognition summary above, for a
+    /// consistent picture across every mastery section on this dashboard,
+    /// even though the Trace activity itself doesn't currently age-gate
+    /// which letters a child can trace.
+    var traceSummary: DomainSummary {
+        let letters = child.unlockedLetters
+        let mastery = { (letter: Letter) in self.child.traceProgress(for: letter.id)?.mastery ?? .new }
+
+        return DomainSummary(
+            id: "tracing",
+            title: "Tracing mastery",
+            practiceTitle: "Worth practising together",
+            practiceAdvice: "These come up shaky most often. A pencil and paper alongside the app helps more than extra screen time.",
+            cells: letters.map { .init(id: $0.id, label: $0.uppercase, mastery: mastery($0)) },
+            masteredCount: child.masteredUnlockedTraceCount,
+            learningCount: letters.count { mastery($0) == .learning },
+            notStartedCount: letters.count { mastery($0) == .new },
+            needsPractice: child.traceProgress
+                .filter { $0.attempts >= 2 && $0.accuracy < 0.6 }
+                .sorted { $0.accuracy < $1.accuracy }
+                .prefix(5)
+                .compactMap { $0.letter?.uppercase }
+        )
+    }
+
+    var summaries: [DomainSummary] { [letterSummary, numberSummary, traceSummary] }
 
     // MARK: - Time
 
@@ -128,7 +154,9 @@ final class ParentDashboardViewModel {
         minutes == 0 ? "Off" : "\(minutes)m"
     }
 
-    var sessionCount: Int { child.sessions.count }
+    /// Windowed to the same 7 days as `weeklyTotals`, not all-time — see
+    /// `SessionTimerService.sessionCount(for:days:)`.
+    var sessionCount: Int { SessionTimerService.sessionCount(for: child) }
 
     var totalStars: Int { child.starCount }
     var streak: Int { child.currentStreak }

@@ -11,6 +11,7 @@ struct OnboardingView: View {
     private let coordinator: AppCoordinator
 
     @FocusState private var isNameFocused: Bool
+    @State private var saveErrorMessage: String?
 
     /// Two across on a phone, all four in one row once there's room.
     private var columns: [GridItem] {
@@ -58,8 +59,11 @@ struct OnboardingView: View {
                         isEnabled: viewModel.canContinue
                     ) {
                         isNameFocused = false
-                        if let child = viewModel.createProfile() {
+                        do {
+                            let child = try viewModel.createProfile()
                             coordinator.start(with: child)
+                        } catch {
+                            saveErrorMessage = "Couldn't create your profile. Please try again."
                         }
                     }
 
@@ -77,6 +81,14 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
+        }
+        .alert("Couldn't Continue", isPresented: Binding(
+            get: { saveErrorMessage != nil },
+            set: { if !$0 { saveErrorMessage = nil } }
+        ), presenting: saveErrorMessage) { _ in
+            Button("OK") { saveErrorMessage = nil }
+        } message: { message in
+            Text(message)
         }
     }
 

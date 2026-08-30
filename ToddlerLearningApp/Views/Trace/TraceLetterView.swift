@@ -76,6 +76,17 @@ struct TraceLetterView: View {
             }
 
             StarBurstView(isActive: viewModel.isComplete)
+
+            // Spec F27: a finish line rather than this activity running
+            // forever. Covers the content above rather than replacing it,
+            // same convention as `StarBurstView`.
+            if viewModel.isRoundComplete {
+                RoundCompleteView(
+                    starsEarned: viewModel.lettersCompletedThisRound,
+                    onPlayAgain: { viewModel.startNewRound() },
+                    onDone: { coordinator.popToRoot() }
+                )
+            }
         }
         .childScreenTypeSize()
         .navigationTitle("Trace Letters")
@@ -168,7 +179,7 @@ struct TraceLetterView: View {
             // Which way to travel, visible before the child starts rather than
             // only once they are already moving.
             Canvas { context, _ in
-                for marker in viewModel.directionMarkers() {
+                for marker in viewModel.directionMarkers {
                     let isActive = marker.strokeIndex == viewModel.currentStrokeIndex
                     context.stroke(
                         Self.arrowhead(at: marker.point, tangent: marker.tangent),
@@ -287,7 +298,7 @@ struct TraceLetterView: View {
     private var controls: some View {
         HStack(spacing: AppSpacing.element) {
             Button {
-                viewModel.clear()
+                viewModel.tryAgain()
             } label: {
                 Label("Try again", systemImage: "arrow.counterclockwise")
                     .font(AppFonts.body)
@@ -295,6 +306,14 @@ struct TraceLetterView: View {
             .buttonStyle(.bordered)
 
             Spacer()
+
+            // Round progress (spec F27) — how many of this round's letters
+            // are done, distinct from the coverage bar above, which tracks
+            // progress through the *current* letter.
+            Text("\(viewModel.lettersCompletedThisRound) of \(viewModel.lettersPerRound)")
+                .font(AppFonts.caption)
+                .foregroundStyle(AppColors.subtitle)
+                .lineLimit(1)
 
             Label("\(viewModel.starsThisSession)", systemImage: "star.fill")
                 .font(AppFonts.body)

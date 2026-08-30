@@ -43,6 +43,9 @@ final class ChildProfile {
     @Relationship(deleteRule: .cascade, inverse: \NumberProgress.child)
     var numberProgress: [NumberProgress] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \TraceProgress.child)
+    var traceProgress: [TraceProgress] = []
+
     @Relationship(deleteRule: .cascade, inverse: \SessionRecord.child)
     var sessions: [SessionRecord] = []
 
@@ -109,5 +112,22 @@ final class ChildProfile {
 
     func numberProgress(for numberID: Int) -> NumberProgress? {
         numberProgress.first { $0.numberID == numberID }
+    }
+
+    // MARK: - Tracing
+
+    /// Tracing-domain twin of `masteredCount` — ungated, for trophies.
+    var masteredTraceCount: Int {
+        traceProgress.count { $0.mastery == .mastered }
+    }
+
+    /// Tracing-domain twin of `masteredUnlockedCount`.
+    var masteredUnlockedTraceCount: Int {
+        let unlocked = Set(unlockedLetters.map(\.id))
+        return traceProgress.count { $0.mastery == .mastered && unlocked.contains($0.letterID) }
+    }
+
+    func traceProgress(for letterID: String) -> TraceProgress? {
+        traceProgress.first { $0.letterID == letterID }
     }
 }

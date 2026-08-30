@@ -15,6 +15,16 @@ final class HomeViewModel {
     private let speechService: SpeechServicing
     private let haptics: HapticsService
 
+    /// Tracks `tapLetterOfDay`'s teaching sequence so a second tap — or
+    /// leaving Home entirely — can cancel it. Without this, a child tapping
+    /// the letter-of-the-day pill repeatedly (the expected way to use it)
+    /// started overlapping 3-beat sequences: the second call's `stop()`
+    /// resumed the first sequence's paused beat, which then carried on to
+    /// its next beat and spoke over the second. Every other screen with a
+    /// multi-beat speech sequence tracks its task the same way — see
+    /// `BrowsingViewModel.speechTask` — Home was the one that didn't.
+    private var speechTask: Task<Void, Never>?
+
     init(child: ChildProfile,
          sessionTimer: SessionTimerService,
          speechService: SpeechServicing,
@@ -69,6 +79,9 @@ final class HomeViewModel {
     /// so this picks from a handful of greetings instead of one fixed line.
     func tapMascot() {
         haptics.tap()
+        // Cancels any in-flight `tapLetterOfDay` sequence so its remaining
+        // beats can't resume and speak over this line — see `speechTask`.
+        speechTask?.cancel()
         let templates = [
             "Hi %@! Ready to play?",
             "Hello %@! Let's have some fun!",
@@ -84,6 +97,18 @@ final class HomeViewModel {
     func tapLetterOfDay() {
         guard let letterOfTheDay else { return }
         haptics.tap()
-        Task { await speechService.teachLetter(letterOfTheDay) }
+        speechTask?.cancel()
+        speechService.stop()
+        speechTask = Task { [speechService] in
+            await speechService.teachLetter(letterOfTheDay)
+        }
+    }
+
+    /// Called when Home disappears, so a teaching sequence started by the
+    /// letter-of-the-day pill doesn't keep talking over whatever screen the
+    /// child navigated to next.
+    func onDisappear() {
+        speechTask?.cancel()
+        speechService.stop()
     }
 }

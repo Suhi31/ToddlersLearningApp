@@ -101,6 +101,18 @@ struct QuizScreen<Domain: QuizDomain, Prompt: View>: View {
             }
 
             StarBurstView(isActive: viewModel.feedback == .correct)
+
+            // Spec F27: a finish line rather than the quiz running forever.
+            // Covers the content above rather than replacing it, same
+            // convention as `StarBurstView` — the last-answered question
+            // stays laid out underneath, just no longer interactive.
+            if viewModel.isRoundComplete {
+                RoundCompleteView(
+                    starsEarned: viewModel.questionsAnswered,
+                    onPlayAgain: { viewModel.startNewRound() },
+                    onDone: { coordinator.popToRoot() }
+                )
+            }
         }
         .childScreenTypeSize()
         .navigationTitle(title)
@@ -114,20 +126,35 @@ struct QuizScreen<Domain: QuizDomain, Prompt: View>: View {
     }
 
     private var scoreBar: some View {
-        HStack {
-            Label("\(viewModel.starsThisSession)", systemImage: "star.fill")
-                .font(AppFonts.body)
-                .foregroundStyle(AppColors.star)
+        VStack(spacing: AppSpacing.tight) {
+            HStack {
+                Label("\(viewModel.starsThisSession)", systemImage: "star.fill")
+                    .font(AppFonts.body)
+                    .foregroundStyle(AppColors.star)
 
-            Spacer()
+                Spacer()
 
-            Button {
-                viewModel.repeatPrompt()
-            } label: {
-                Label("Say again", systemImage: "arrow.clockwise")
-                    .font(AppFonts.caption)
+                Button {
+                    viewModel.repeatPrompt()
+                } label: {
+                    Label("Say again", systemImage: "arrow.clockwise")
+                        .font(AppFonts.caption)
+                }
+                .accessibilityLabel("Repeat the question")
             }
-            .accessibilityLabel("Repeat the question")
+
+            HStack(spacing: AppSpacing.tight) {
+                ProgressBar(
+                    value: Double(viewModel.questionsAnswered) / Double(viewModel.questionsPerRound),
+                    tint: AppColors.primary,
+                    height: 8
+                )
+                Text("\(viewModel.questionsAnswered) of \(viewModel.questionsPerRound)")
+                    .font(AppFonts.caption)
+                    .foregroundStyle(AppColors.subtitle)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
         }
     }
 

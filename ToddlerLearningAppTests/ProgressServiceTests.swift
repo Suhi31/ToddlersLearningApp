@@ -23,10 +23,18 @@ struct ProgressServiceTests {
     /// A fresh in-memory stack per test, so no test can observe another's writes.
     private static func makeService(childAge: Int = 4) throws -> (ProgressService, ChildProfile) {
         let container = try ModelContainer(
-            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, SessionRecord.self,
+            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, TraceProgress.self, SessionRecord.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
-        let context = container.mainContext
+        // A plain `ModelContext(container)`, not `container.mainContext`: the
+        // latter observes app-lifecycle notifications to autosave/reset itself,
+        // and the test host process backgrounds almost immediately since it
+        // never really presents UI — which was enough to trigger SwiftData's
+        // "This model instance was destroyed by calling ModelContext.reset"
+        // fatal error mid-test. The production code's own use of
+        // `container.mainContext` (AppDependencies) is unaffected; that runs
+        // inside a real, foregrounded app.
+        let context = ModelContext(container)
         let child = ChildProfile(name: "Test", age: childAge, avatarEmoji: "🐰")
         context.insert(child)
         return (ProgressService(context: context), child)
@@ -317,5 +325,49 @@ struct ProgressServiceTests {
         #expect(question.options.count == 4)
         #expect(question.options.contains(question.answer.id))
         #expect(Set(question.options).count == question.options.count)
+    }
+
+    // MARK: - Tracing parity
+    //
+    // Tracing (spec F28) shares the same state machine too — see
+    // `ProgressRecord` in ProgressService. These tests exist to catch tracing
+    // drifting from the other two domains, not to re-prove the rules. There is
+    // no tracing "question shape" test — unlike letters/numbers, tracing has
+    // no quiz question to build; `recordTrace(completed:)` is the whole API.
+
+    @Test("Tracing promotes on the same threshold as letters and numbers")
+    func tracePromotion() throws {
+        let (service, child) = try Self.makeService()
+
+        for _ in 0..<3 { service.recordTrace(child: child, letterID: "A", completed: true) }
+        #expect(service.traceProgress(for: child, letterID: "A").mastery == .learning)
+
+        for _ in 0..<3 { service.recordTrace(child: child, letterID: "A", completed: true) }
+        #expect(service.traceProgress(for: child, letterID: "A").mastery == .mastered)
+    }
+
+    @Test("Tracing demotes on the same threshold as letters and numbers")
+    func traceDemotion() throws {
+        let (service, child) = try Self.makeService()
+
+        for _ in 0..<3 { service.recordTrace(child: child, letterID: "A", completed: true) }
+        for _ in 0..<2 { service.recordTrace(child: child, letterID: "A", completed: false) }
+
+        #expect(service.traceProgress(for: child, letterID: "A").mastery == .new)
+    }
+
+    @Test("Trace mastery is gated separately from trophies, same as letters")
+    func traceMasteredCountIsGatedSeparatelyFromTrophies() throws {
+        let (service, child) = try Self.makeService(childAge: 4)
+
+        // Master a letter outside the under-three set, then lower the age —
+        // the same regression `masteredCountIsGatedSeparatelyFromTrophies`
+        // guards against for letters, checked here for tracing too.
+        for _ in 0..<6 { service.recordTrace(child: child, letterID: "Z", completed: true) }
+        child.age = 2
+
+        #expect(child.masteredTraceCount == 1, "Trophy progress is never un-earned")
+        #expect(child.masteredUnlockedTraceCount == 0, "Z is outside the age-gated set")
+        #expect(child.masteredUnlockedTraceCount <= child.unlockedLetters.count)
     }
 }

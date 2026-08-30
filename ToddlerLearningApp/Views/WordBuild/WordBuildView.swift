@@ -42,6 +42,17 @@ struct WordBuildView: View {
             .padding(AppSpacing.screen)
 
             StarBurstView(isActive: viewModel.isComplete)
+
+            // Spec F27: a finish line rather than the activity running
+            // forever. Covers the content above rather than replacing it,
+            // same convention as `StarBurstView`.
+            if viewModel.isRoundComplete {
+                RoundCompleteView(
+                    starsEarned: viewModel.wordsCompleted,
+                    onPlayAgain: { viewModel.startNewRound() },
+                    onDone: { coordinator.popToRoot() }
+                )
+            }
         }
         .childScreenTypeSize()
         .navigationTitle("Build the Word")
@@ -54,11 +65,26 @@ struct WordBuildView: View {
     }
 
     private var scoreBar: some View {
-        HStack {
-            Label("\(viewModel.starsThisSession)", systemImage: "star.fill")
-                .font(AppFonts.body)
-                .foregroundStyle(AppColors.star)
-            Spacer()
+        VStack(spacing: AppSpacing.tight) {
+            HStack {
+                Label("\(viewModel.starsThisSession)", systemImage: "star.fill")
+                    .font(AppFonts.body)
+                    .foregroundStyle(AppColors.star)
+                Spacer()
+            }
+
+            HStack(spacing: AppSpacing.tight) {
+                ProgressBar(
+                    value: Double(viewModel.wordsCompleted) / Double(viewModel.wordsPerRound),
+                    tint: AppColors.primary,
+                    height: 8
+                )
+                Text("\(viewModel.wordsCompleted) of \(viewModel.wordsPerRound)")
+                    .font(AppFonts.caption)
+                    .foregroundStyle(AppColors.subtitle)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
         }
     }
 

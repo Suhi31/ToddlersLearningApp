@@ -24,13 +24,6 @@ struct SettingsView: View {
     @State private var newName = ""
     @State private var newAge = 3
 
-    /// Snapshot of each child's saved values, so edits made live to the
-    /// `@Bindable` model (which update the UI immediately but aren't
-    /// persisted yet) can be compared against something to know whether
-    /// there's anything to save.
-    @State private var savedValues: [UUID: (name: String, age: Int)] = [:]
-
-    @State private var didSaveAll = false
     @FocusState private var focusedChildID: UUID?
     @State private var saveErrorMessage: String?
 
@@ -49,17 +42,6 @@ struct SettingsView: View {
                     )
                 }
                 .onDelete(perform: delete)
-
-                PrimaryButton(
-                    title: didSaveAll ? "Saved! ✓" : "Save changes",
-                    color: didSaveAll ? AppColors.success : AppColors.primary,
-                    isEnabled: canSaveAll
-                ) {
-                    saveAll()
-                }
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-                .padding(.vertical, AppSpacing.tight)
 
                 if isAdding {
                     ChildFormFields(name: $newName, age: $newAge)
@@ -98,8 +80,6 @@ struct SettingsView: View {
                 EditButton()
             }
         }
-        .onAppear { syncSavedValues() }
-        .onChange(of: children.map(\.id)) { _, _ in syncSavedValues() }
         .alert("Couldn't Save", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -107,52 +87,6 @@ struct SettingsView: View {
             Button("OK") { saveErrorMessage = nil }
         } message: { message in
             Text(message)
-        }
-    }
-
-    // MARK: - Save
-
-    private var isDirty: Bool {
-        children.contains { child in
-            let saved = savedValues[child.id]
-            return saved?.name != child.name || saved?.age != child.age
-        }
-    }
-
-    private var canSaveAll: Bool {
-        isDirty && children.allSatisfy { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
-    }
-
-    private func saveAll() {
-        guard canSaveAll else { return }
-
-        for child in children {
-            let trimmed = child.name.trimmingCharacters(in: .whitespaces)
-            if trimmed != child.name { child.name = trimmed }
-        }
-
-        do {
-            try modelContext.save()
-        } catch {
-            saveErrorMessage = "Couldn't save your changes. Please try again."
-            return
-        }
-
-        focusedChildID = nil
-        syncSavedValues()
-
-        didSaveAll = true
-        Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            didSaveAll = false
-        }
-    }
-
-    private func syncSavedValues() {
-        let currentIDs = Set(children.map(\.id))
-        savedValues = savedValues.filter { currentIDs.contains($0.key) }
-        for child in children {
-            savedValues[child.id] = (child.name, child.age)
         }
     }
 
@@ -228,6 +162,13 @@ private struct ChildEditRow: View {
     let isActive: Bool
     var focusedChildID: FocusState<UUID?>.Binding
 
+    /// The name as it stood when this field gained focus. `child.name` is a
+    /// live `@Bindable` binding — SwiftData autosaves every keystroke, there
+    /// is no separate "Save changes" step — so this exists only to have
+    /// something to restore to if the field is left empty, rather than
+    /// silently persisting a blank name.
+    @State private var nameBeforeEditing = ""
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.tight) {
             HStack {
@@ -237,7 +178,15 @@ private struct ChildEditRow: View {
                 TextField("Name", text: $child.name)
                     .foregroundStyle(AppColors.title)
                     .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
                     .focused(focusedChildID, equals: child.id)
+                    .onChange(of: focusedChildID.wrappedValue) { previous, current in
+                        if current == child.id {
+                            nameBeforeEditing = child.name
+                        } else if previous == child.id {
+                            commitName()
+                        }
+                    }
 
                 if isActive {
                     Text("Active")
@@ -257,5 +206,13 @@ private struct ChildEditRow: View {
             }
         }
         .padding(.vertical, AppSpacing.tight)
+    }
+
+    /// Trims trailing/leading whitespace on losing focus, and restores the
+    /// pre-edit name if that leaves nothing — a blank name would otherwise
+    /// persist via autosave rather than just look temporarily empty.
+    private func commitName() {
+        let trimmed = child.name.trimmingCharacters(in: .whitespaces)
+        child.name = trimmed.isEmpty ? nameBeforeEditing : trimmed
     }
 }

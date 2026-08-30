@@ -45,9 +45,22 @@ protocol QuizDomain {
 @Observable
 final class QuizEngineViewModel<Domain: QuizDomain> {
 
+    /// Correct answers needed to complete a round (spec F27) — a finish line
+    /// rather than the quiz running forever until the child backs out.
+    let questionsPerRound: Int
+
     private(set) var question: Domain.Question?
     private(set) var feedback: QuizFeedbackState<Domain.Answer> = .none
     private(set) var starsThisSession: Int = 0
+
+    /// Correct answers so far in the current round. A miss keeps the same
+    /// question on screen and doesn't advance this — see `select(_:)`.
+    private(set) var questionsAnswered: Int = 0
+
+    /// Set once `questionsAnswered` reaches `questionsPerRound`. The view
+    /// shows a celebration instead of the next question; `startNewRound()`
+    /// clears it and begins again.
+    private(set) var isRoundComplete: Bool = false
 
     /// Blocks further taps while feedback is playing, so a child mashing tiles
     /// cannot bank several answers against one question.
@@ -77,19 +90,21 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
          domain: Domain,
          speechService: SpeechServicing,
          rewardService: RewardService,
-         haptics: HapticsService) {
+         haptics: HapticsService,
+         questionsPerRound: Int = 10) {
         self.child = child
         self.domain = domain
         self.speechService = speechService
         self.rewardService = rewardService
         self.haptics = haptics
+        self.questionsPerRound = questionsPerRound
     }
 
     // MARK: - Lifecycle
 
     func onAppear() {
         haptics.prepare()
-        if question == nil {
+        if question == nil, !isRoundComplete {
             loadNextQuestion()
         }
     }
@@ -151,6 +166,14 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
         speechService.speak(domain.promptSpeech(for: question))
     }
 
+    /// Starts a fresh round from zero — the "Play again" action on the
+    /// round-complete celebration.
+    func startNewRound() {
+        questionsAnswered = 0
+        isRoundComplete = false
+        loadNextQuestion()
+    }
+
     // MARK: - Flow
 
     private func advance(afterCorrectAnswer wasCorrect: Bool) {
@@ -158,7 +181,12 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
         isAcceptingInput = true
 
         if wasCorrect {
-            loadNextQuestion()
+            questionsAnswered += 1
+            if questionsAnswered >= questionsPerRound {
+                isRoundComplete = true
+            } else {
+                loadNextQuestion()
+            }
         }
         // A miss keeps the same question on screen: the child has just been told
         // the answer, and getting it right immediately afterwards is the point.

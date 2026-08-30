@@ -139,7 +139,31 @@ final class ProgressService {
         return NumberQuizQuestion(answer: answer, options: options)
     }
 
-    // MARK: - Shared mutation (letters and numbers apply identical rules)
+    // MARK: - Tracing
+
+    /// Returns the stored trace-progress for a letter, creating it on first encounter.
+    @discardableResult
+    func traceProgress(for child: ChildProfile, letterID: String) -> TraceProgress {
+        if let existing = child.traceProgress(for: letterID) {
+            return existing
+        }
+        let record = TraceProgress(letterID: letterID)
+        context.insert(record)
+        record.child = child
+        return record
+    }
+
+    /// Records a trace attempt and applies promotion/demotion — same rules as
+    /// the letter/number quiz domains above. `completed` is `true` for a
+    /// letter finished start to finish, `false` for "Try again" pressed with
+    /// meaningful progress already made — see `TraceLetterViewModel` for the
+    /// exact threshold that counts as a miss rather than simply not attempted.
+    func recordTrace(child: ChildProfile, letterID: String, completed: Bool) {
+        apply(correct: completed, to: traceProgress(for: child, letterID: letterID))
+        save()
+    }
+
+    // MARK: - Shared mutation (letters, numbers and tracing apply identical rules)
 
     /// Applies one answer's promotion/demotion rules to either progress model.
     private func apply(correct: Bool, to record: ProgressRecord) {
@@ -217,6 +241,7 @@ private protocol ProgressRecord: AnyObject {
 
 extension LetterProgress: ProgressRecord {}
 extension NumberProgress: ProgressRecord {}
+extension TraceProgress: ProgressRecord {}
 
 /// One multiple-choice question. A value type — it holds no persistent state.
 struct QuizQuestion: Identifiable, Hashable {

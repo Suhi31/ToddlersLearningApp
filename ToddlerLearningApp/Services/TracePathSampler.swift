@@ -31,6 +31,13 @@ struct TraceStrokeGeometry {
     /// finger be moving" reference.
     let tangents: [CGVector]
 
+    /// Arrowheads along the stroke showing which way to travel, spaced every
+    /// `TracePathSampler.directionMarkerSpacing` points of arc length. Built
+    /// once alongside the rest of this geometry (see `TracePathSampler`)
+    /// instead of being recomputed from a `Canvas` render closure on every
+    /// touch point at 60 Hz.
+    let directionMarkers: [(point: CGPoint, tangent: CGVector)]
+
     var totalLength: CGFloat { cumulativeLengths.last ?? 0 }
 
     var start: CGPoint? { densePoints.first }
@@ -47,13 +54,31 @@ struct TraceStrokeGeometry {
         return tangents[index]
     }
 
+    /// Binary search for the first point whose cumulative arc length is at
+    /// least `arcLength` — equivalent to (and replaces) a linear
+    /// `firstIndex { $0 >= clamped }` scan. `cumulativeLengths` is
+    /// non-decreasing by construction, which is exactly what a lower-bound
+    /// binary search requires: it returns the same index a linear scan would,
+    /// including the first index of any run of equal values produced by
+    /// coincident dense points. `clamped` never exceeds `totalLength` (the
+    /// array's last value), so the search always lands on a valid index —
+    /// the `?? densePoints.count - 1` fallback the old linear version needed
+    /// was already unreachable.
     private func index(atArcLength arcLength: CGFloat) -> Int? {
         guard !densePoints.isEmpty else { return nil }
         let clamped = min(max(arcLength, 0), totalLength)
-        // Monotonic, so a linear scan from the start is exact and cheap at
-        // these sizes (a few hundred points per stroke).
-        let found = cumulativeLengths.firstIndex { $0 >= clamped }
-        return found ?? densePoints.count - 1
+
+        var low = 0
+        var high = cumulativeLengths.count - 1
+        while low < high {
+            let mid = low + (high - low) / 2
+            if cumulativeLengths[mid] < clamped {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return low
     }
 
     /// Projects `point` onto the stroke, but only over `window` of arc length.
@@ -83,6 +108,11 @@ struct TraceStrokeGeometry {
 
 struct LetterTraceGeometry {
     let strokes: [TraceStrokeGeometry]
+
+    /// Every stroke's dotted guide path, precomputed alongside `strokes`
+    /// instead of `strokes.map(\.guidePath)` being re-run on every read —
+    /// this is fetched from two separate `Canvas` render closures per frame.
+    let guidePaths: [Path]
 }
 
 @MainActor
@@ -91,6 +121,10 @@ enum TracePathSampler {
     /// Interpolated points per authored segment — enough that a smoothed
     /// curve reads as round rather than faceted at the sizes this app draws.
     private static let samplesPerSegment = 14
+
+    /// Spacing between direction-arrow markers, in points of arc length.
+    /// Matches the one spacing `TraceLetterView` ever actually asked for.
+    private static let directionMarkerSpacing: CGFloat = 64
 
     private struct CacheKey: Hashable {
         let letterID: String
@@ -104,7 +138,8 @@ enum TracePathSampler {
         if let cached = cache[key] { return cached }
         guard let path = LetterTracePathContent.paths[letterID] else { return nil }
 
-        let built = LetterTraceGeometry(strokes: path.strokes.map { geometry(for: $0, canvasSize: canvasSize) })
+        let strokes = path.strokes.map { geometry(for: $0, canvasSize: canvasSize) }
+        let built = LetterTraceGeometry(strokes: strokes, guidePaths: strokes.map(\.guidePath))
         cache[key] = built
         return built
     }
@@ -121,12 +156,43 @@ enum TracePathSampler {
             for p in dense.dropFirst() { guidePath.addLine(to: p) }
         }
 
+        let cumulativeLengths = cumulativeLengths(of: dense)
+        let tangents = tangents(of: dense)
+
         return TraceStrokeGeometry(
             guidePath: guidePath,
             densePoints: dense,
-            cumulativeLengths: cumulativeLengths(of: dense),
-            tangents: tangents(of: dense)
+            cumulativeLengths: cumulativeLengths,
+            tangents: tangents,
+            directionMarkers: directionMarkers(
+                densePoints: dense,
+                cumulativeLengths: cumulativeLengths,
+                tangents: tangents,
+                spacing: directionMarkerSpacing
+            )
         )
+    }
+
+    /// Arrowheads spaced every `spacing` points of arc length along a stroke,
+    /// starting half a spacing in so a marker never sits on top of the start
+    /// badge or the very end of the stroke. Reads the dense/length/tangent
+    /// arrays directly rather than through `TraceStrokeGeometry`'s
+    /// `point(atArcLength:)`/`tangent(atArcLength:)` — this runs once at
+    /// geometry-build time, before there is a `TraceStrokeGeometry` to call
+    /// those methods on.
+    private static func directionMarkers(
+        densePoints: [CGPoint],
+        cumulativeLengths: [CGFloat],
+        tangents: [CGVector],
+        spacing: CGFloat
+    ) -> [(point: CGPoint, tangent: CGVector)] {
+        let totalLength = cumulativeLengths.last ?? 0
+        guard totalLength > 0 else { return [] }
+
+        return stride(from: spacing / 2, to: totalLength, by: spacing).compactMap { distance in
+            guard let index = cumulativeLengths.firstIndex(where: { $0 >= distance }) else { return nil }
+            return (densePoints[index], tangents[index])
+        }
     }
 
     // MARK: - Straight segments

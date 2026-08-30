@@ -34,10 +34,11 @@ final class OnboardingViewModel {
         ageOptions.first { $0.age == selectedAge }?.animal ?? "🐰"
     }
 
-    /// Creates and persists the profile. Returns `nil` only if the store
-    /// refuses the write, in which case the caller stays on onboarding rather
-    /// than navigating into a session with no child behind it.
-    func createProfile() -> ChildProfile? {
-        try? childProfileService.create(name: trimmedName, age: selectedAge)
+    /// Creates and persists the profile. Throws if the store refuses the
+    /// write, so the caller can tell the parent rather than "Let's Play!"
+    /// silently doing nothing and leaving them stuck on onboarding with no
+    /// idea why.
+    func createProfile() throws -> ChildProfile {
+        try childProfileService.create(name: trimmedName, age: selectedAge)
     }
 }

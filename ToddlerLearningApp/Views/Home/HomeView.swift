@@ -73,6 +73,7 @@ struct HomeView: View {
             // Returning to Home is a safe point to end the session on (spec F5).
             coordinator.checkTimeLimitAtSafePoint()
         }
+        .onDisappear { viewModel.onDisappear() }
     }
 
     // MARK: - Header
@@ -134,36 +135,36 @@ struct HomeView: View {
         LazyVGrid(columns: columns, spacing: AppSpacing.element) {
             ActivityTile(title: "Learn Letters", emoji: "📖", color: AppColors.primary,
                          height: layout.activityTileHeight) {
-                coordinator.push(.learnAlphabet)
+                coordinator.startActivity(.learnAlphabet)
             }
             ActivityTile(title: "Trace Letters", emoji: "✏️", color: AppColors.primary,
                          height: layout.activityTileHeight) {
-                coordinator.push(.traceLetters)
+                coordinator.startActivity(.traceLetters)
             }
             ActivityTile(title: "Play a Game", emoji: "🎯", color: AppColors.success,
                          height: layout.activityTileHeight) {
-                coordinator.push(.quiz)
+                coordinator.startActivity(.quiz)
             }
             ActivityTile(title: "Learn Numbers", emoji: "🔢", color: AppColors.primary,
                          height: layout.activityTileHeight) {
-                coordinator.push(.learnNumbers)
+                coordinator.startActivity(.learnNumbers)
             }
             ActivityTile(title: "Count & Find", emoji: "🍎", color: AppColors.success,
                          height: layout.activityTileHeight) {
-                coordinator.push(.numberQuiz)
+                coordinator.startActivity(.numberQuiz)
             }
             ActivityTile(title: "Build the Word", emoji: "🧩", color: AppColors.primary,
                          height: layout.activityTileHeight) {
-                coordinator.push(.wordBuild)
+                coordinator.startActivity(.wordBuild)
             }
             ActivityTile(title: "Nursery Rhymes", emoji: "🎵", color: AppColors.success,
                          height: layout.activityTileHeight) {
-                coordinator.push(.rhymes)
+                coordinator.startActivity(.rhymes)
             }
             ActivityTile(title: "My Rewards", emoji: "🏆", color: AppColors.warning,
                          badge: "\(viewModel.starCount) stars",
                          height: layout.activityTileHeight) {
-                coordinator.push(.rewards)
+                coordinator.startActivity(.rewards)
             }
         }
     }

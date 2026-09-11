@@ -30,17 +30,80 @@ enum LetterTracePathContent {
         CGPoint(x: x, y: y)
     }
 
-    /// A right-bulging bowl used by B/D/P/R, running from `topY` to `bottomY`
-    /// at `x`, bulging out to `bulge`.
-    private static func bowl(x: CGFloat, topY: CGFloat, bottomY: CGFloat, bulge: CGFloat) -> [CGPoint] {
+    /// A right-hand bowl for B/D/P/R: leaves the stem at `startY`, runs out
+    /// along the top arm, turns a rounded end reaching `right`, and runs back
+    /// along the bottom arm to the stem at `endY`. The arms are flat unless
+    /// `startY`/`endY` say otherwise.
+    ///
+    /// Built as the exact outline — straight arms, an elliptical end — then
+    /// re-spaced into evenly spread anchors for `TracePathSampler`'s
+    /// Catmull-Rom smoothing to follow. The five-point version this replaces
+    /// put a lone anchor further out at the middle of the curve, which the
+    /// smoothing turned into a visible wobble, and ran straight diagonals
+    /// between the stem and the bulge, which drew wedges rather than bowls.
+    private static func bowl(x: CGFloat,
+                             topY: CGFloat,
+                             bottomY: CGFloat,
+                             right: CGFloat,
+                             startY: CGFloat? = nil,
+                             endY: CGFloat? = nil) -> [CGPoint] {
         let midY = (topY + bottomY) / 2
-        return [
-            point(x, topY),
-            point(bulge, topY + (midY - topY) * 0.35),
-            point(bulge + 0.04, midY),
-            point(bulge, midY + (bottomY - midY) * 0.35),
-            point(x, bottomY)
-        ]
+        let radiusY = (bottomY - topY) / 2
+        let radiusX = min(radiusY, right - x)
+        // Where the arms stop and the rounded end begins.
+        let turnX = right - radiusX
+
+        let roundEnd = stride(from: CGFloat(-90), through: 90, by: 5).map { degrees in
+            let angle = degrees * .pi / 180
+            return point(turnX + radiusX * cos(angle), midY + radiusY * sin(angle))
+        }
+        let outline = [point(x, startY ?? topY)] + roundEnd + [point(x, endY ?? bottomY)]
+        return evenlySpaced(outline, spacing: 0.05)
+    }
+
+    /// `polyline` re-spaced into anchors an even `spacing` apart, ends kept
+    /// exact. Catmull-Rom only follows a shape faithfully when its anchors are
+    /// roughly evenly spread: sparse anchors on a straight arm next to dense
+    /// ones round a curve make it overshoot into bumps where the two meet.
+    private static func evenlySpaced(_ polyline: [CGPoint], spacing: CGFloat) -> [CGPoint] {
+        var lengths: [CGFloat] = [0]
+        for (from, to) in zip(polyline, polyline.dropFirst()) {
+            lengths.append(lengths[lengths.count - 1] + hypot(to.x - from.x, to.y - from.y))
+        }
+        guard let total = lengths.last, total > 0 else { return polyline }
+
+        let count = max(Int((total / spacing).rounded()), 2)
+        var segment = 0
+        return (0...count).map { step in
+            let target = total * CGFloat(step) / CGFloat(count)
+            while segment < polyline.count - 2, lengths[segment + 1] < target {
+                segment += 1
+            }
+            let from = polyline[segment]
+            let to = polyline[segment + 1]
+            let span = lengths[segment + 1] - lengths[segment]
+            let t = span > 0 ? (target - lengths[segment]) / span : 0
+            return point(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t)
+        }
+    }
+
+    /// B's two bowls as one continuous stroke, meeting the stem in a point at
+    /// the waist — a sharp corner there, not a curve swinging through it.
+    ///
+    /// The same bowl twice, mirrored about a waist at the letter's exact
+    /// middle, so the bottom matches the top. (The waist used to sit at `mid`,
+    /// a little below middle, which left the bottom bowl shorter — and it was
+    /// drawn wider as well — so its curve came out smaller and stretched.)
+    ///
+    /// Their inner arms slant into the waist rather than both running flat
+    /// along it: flat, the top bowl's way back in and the bottom bowl's way
+    /// out would be the same line, and tracing couldn't tell which of the two
+    /// a finger there was on.
+    private static var bBowls: TraceStroke {
+        let waist = (top + base) / 2
+        let upper = bowl(x: left, topY: top, bottomY: waist - 0.05, right: 0.64, endY: waist)
+        let lower = bowl(x: left, topY: waist + 0.05, bottomY: base, right: 0.64, startY: waist)
+        return TraceStroke(upper + lower.dropFirst(), smooth: true, corners: [upper.count - 1])
     }
 
     /// The round-letter arc shared by C and G.
@@ -59,13 +122,21 @@ enum LetterTracePathContent {
     /// counter-clockwise, so the two curve families teach different directions.
     /// Now that tracing enforces direction, whichever way these are authored is
     /// what a child is taught, so keep that in mind before editing.
+    ///
+    /// A true oval filling the grid, built the same way as `bowl`: the exact
+    /// outline, re-spaced evenly for the smoothing to follow. The twelve
+    /// hand-placed anchors it replaces didn't sit on any one oval — some
+    /// bulged out, some sat in — so the loop came out lumpy.
     private static var circle: [CGPoint] {
-        [
-            point(center, top), point(0.64, 0.19), point(0.72, 0.32), point(right, mid),
-            point(0.72, 0.72), point(0.64, 0.83), point(center, base),
-            point(0.36, 0.83), point(0.28, 0.72), point(left, mid),
-            point(0.28, 0.32), point(0.36, 0.19), point(center, top)
-        ]
+        let radiusX = (right - left) / 2
+        let radiusY = (base - top) / 2
+        let centerY = (top + base) / 2
+        // -90° is the top; increasing angle runs clockwise on screen (y down).
+        let outline = stride(from: CGFloat(-90), through: 270, by: 5).map { degrees in
+            let angle = degrees * .pi / 180
+            return point(center + radiusX * cos(angle), centerY + radiusY * sin(angle))
+        }
+        return evenlySpaced(outline, spacing: 0.05)
     }
 
     static let paths: [String: LetterTracePath] = [
@@ -76,18 +147,14 @@ enum LetterTracePathContent {
         ]),
         "B": LetterTracePath(strokes: [
             TraceStroke([point(left, top), point(left, base)]),
-            TraceStroke(
-                bowl(x: left, topY: top, bottomY: mid, bulge: 0.64)
-                    + bowl(x: left, topY: mid, bottomY: base, bulge: 0.70).dropFirst(),
-                smooth: true
-            )
+            bBowls
         ]),
         "C": LetterTracePath(strokes: [
             TraceStroke(roundArc, smooth: true)
         ]),
         "D": LetterTracePath(strokes: [
             TraceStroke([point(left, top), point(left, base)]),
-            TraceStroke(bowl(x: left, topY: top, bottomY: base, bulge: 0.70), smooth: true)
+            TraceStroke(bowl(x: left, topY: top, bottomY: base, right: 0.74), smooth: true)
         ]),
         "E": LetterTracePath(strokes: [
             TraceStroke([point(left, top), point(left, base)]),
@@ -153,7 +220,7 @@ enum LetterTracePathContent {
         ]),
         "P": LetterTracePath(strokes: [
             TraceStroke([point(left, top), point(left, base)]),
-            TraceStroke(bowl(x: left, topY: top, bottomY: mid, bulge: 0.64), smooth: true)
+            TraceStroke(bowl(x: left, topY: top, bottomY: mid, right: 0.66), smooth: true)
         ]),
         "Q": LetterTracePath(strokes: [
             TraceStroke(circle, smooth: true),
@@ -161,8 +228,8 @@ enum LetterTracePathContent {
         ]),
         "R": LetterTracePath(strokes: [
             TraceStroke([point(left, top), point(left, base)]),
-            TraceStroke(bowl(x: left, topY: top, bottomY: mid, bulge: 0.64), smooth: true),
-            TraceStroke([point(0.52, mid), point(right, base)])
+            TraceStroke(bowl(x: left, topY: top, bottomY: mid, right: 0.66), smooth: true),
+            TraceStroke([point(0.50, mid), point(right, base)])
         ]),
         "S": LetterTracePath(strokes: [
             TraceStroke([

@@ -108,7 +108,7 @@ struct QuizScreen<Domain: QuizDomain, Prompt: View>: View {
             // stays laid out underneath, just no longer interactive.
             if viewModel.isRoundComplete {
                 RoundCompleteView(
-                    starsEarned: viewModel.questionsAnswered,
+                    starsEarned: viewModel.starsThisRound,
                     onPlayAgain: { viewModel.startNewRound() },
                     onDone: { coordinator.popToRoot() }
                 )
@@ -191,11 +191,12 @@ struct QuizScreen<Domain: QuizDomain, Prompt: View>: View {
 
     // MARK: - Feedback styling
 
-    /// On a miss the correct tile is highlighted too, so the child's attention
-    /// is redirected to the right answer instead of dwelling on the error.
+    /// On a miss the correct tile can light up too — when the domain chooses
+    /// to reveal it — so the child's attention goes to the right answer
+    /// instead of dwelling on the error.
     private func isRevealedAnswer(_ option: Domain.Selection) -> Bool {
         guard viewModel.answer(for: option) == viewModel.currentAnswer else { return false }
-        if case .incorrect = viewModel.feedback { return true }
+        if case .incorrect = viewModel.feedback { return viewModel.isAnswerRevealed }
         return viewModel.feedback == .correct
     }
 

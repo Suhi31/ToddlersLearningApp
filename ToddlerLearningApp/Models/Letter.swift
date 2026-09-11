@@ -27,3 +27,10 @@ struct Letter: Identifiable, Hashable, Sendable {
 
     var uppercase: String { id }
 }
+
+/// One picture a letter can be shown with, and the word it stands for — so
+/// "A is for …" always names what is actually on screen.
+struct LetterPicture: Hashable, Sendable {
+    let emoji: String
+    let word: String
+}

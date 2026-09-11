@@ -147,7 +147,7 @@ enum TracePathSampler {
     private static func geometry(for stroke: TraceStroke, canvasSize: CGFloat) -> TraceStrokeGeometry {
         let scaled = stroke.points.map { CGPoint(x: $0.x * canvasSize, y: $0.y * canvasSize) }
         let dense = stroke.smooth
-            ? catmullRom(scaled, samplesPerSegment: samplesPerSegment)
+            ? smoothed(scaled, corners: stroke.corners)
             : piecewiseLinear(scaled, samplesPerSegment: samplesPerSegment)
 
         var guidePath = Path()
@@ -217,6 +217,21 @@ enum TracePathSampler {
     }
 
     // MARK: - Smoothed curves
+
+    /// Smooths each run between `corners` on its own and joins the runs end
+    /// to end, so the stroke turns sharply at a corner instead of the curve
+    /// swinging through it. With no corners this is one Catmull-Rom curve.
+    private static func smoothed(_ points: [CGPoint], corners: [Int]) -> [CGPoint] {
+        guard let lastIndex = points.indices.last else { return [] }
+        let breaks = [0] + corners.filter { $0 > 0 && $0 < lastIndex }.sorted() + [lastIndex]
+
+        var dense: [CGPoint] = []
+        for (start, end) in zip(breaks, breaks.dropFirst()) {
+            let run = catmullRom(Array(points[start...end]), samplesPerSegment: samplesPerSegment)
+            dense.append(contentsOf: dense.isEmpty ? run : Array(run.dropFirst()))
+        }
+        return dense
+    }
 
     /// Clamped Catmull-Rom through the authored anchors — duplicating the
     /// first/last anchor as its own virtual neighbor keeps the curve starting

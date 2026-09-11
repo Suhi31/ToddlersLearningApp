@@ -70,22 +70,52 @@ final class ProgressService {
         }
     }
 
-    /// Builds one multiple-choice question: the answer plus `distractorCount`
-    /// wrong options, shuffled.
+    /// Builds one multiple-choice question, scaled to how well the child knows
+    /// the answer: a new letter gets 3 tiles, none shaped like it; a mastered
+    /// one gets 5, up to two of them look-alikes (F beside E, R beside P) — so
+    /// the game gets harder as the child gets better at it. `distractorCount`
+    /// overrides the tile count; the look-alike rule still follows mastery.
     func makeQuestion(for child: ChildProfile,
                       excluding excluded: String? = nil,
-                      distractorCount: Int = 4) -> QuizQuestion? {
+                      distractorCount: Int? = nil) -> QuizQuestion? {
         guard let answer = nextLetter(for: child, excluding: excluded) else { return nil }
+
+        let mastery = child.progress(for: answer.id)?.mastery ?? .new
+        let count = distractorCount ?? Self.distractorCount(for: mastery)
+        let lookAlikeIDs = AlphabetContent.lookAlikes(of: answer.id)
 
         // Distractors are drawn from the whole unlocked set so the wrong options
         // are still letters the child has plausibly seen.
-        let distractors = child.unlockedLetters
-            .filter { $0.id != answer.id }
-            .shuffled()
-            .prefix(distractorCount)
+        let others = child.unlockedLetters.filter { $0.id != answer.id }.shuffled()
+        let lookAlikes = others.filter { lookAlikeIDs.contains($0.id) }
+        let distinct = others.filter { !lookAlikeIDs.contains($0.id) }
+
+        let chosenLookAlikes = Array(lookAlikes.prefix(Self.lookAlikeQuota(for: mastery)))
+        // The remaining look-alikes only top the row up when too few distinct
+        // letters are unlocked to fill it.
+        let distractors = (chosenLookAlikes + distinct + lookAlikes.dropFirst(chosenLookAlikes.count))
+            .prefix(count)
 
         let options = (Array(distractors) + [answer]).shuffled()
-        return QuizQuestion(answer: answer, options: options)
+        return QuizQuestion(answer: answer,
+                            picture: answer.pictures.randomElement() ?? answer.mainPicture,
+                            options: options)
+    }
+
+    private static func distractorCount(for mastery: MasteryLevel) -> Int {
+        switch mastery {
+        case .new: 2
+        case .learning: 3
+        case .mastered: 4
+        }
+    }
+
+    private static func lookAlikeQuota(for mastery: MasteryLevel) -> Int {
+        switch mastery {
+        case .new: 0
+        case .learning: 1
+        case .mastered: 2
+        }
     }
 
     // MARK: - Numbers
@@ -248,6 +278,8 @@ extension TraceProgress: ProgressRecord {}
 struct QuizQuestion: Identifiable, Hashable {
     let id = UUID()
     let answer: Letter
+    /// Shown only once the letter is found — see `LetterQuizDomain`.
+    let picture: LetterPicture
     let options: [Letter]
 }
 

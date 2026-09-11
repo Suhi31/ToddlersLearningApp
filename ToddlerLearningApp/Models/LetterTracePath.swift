@@ -24,9 +24,15 @@ struct TraceStroke {
     /// strokes are simple two-point lines where this has no effect either way.
     var smooth: Bool = false
 
-    init(_ points: [CGPoint], smooth: Bool = false) {
+    /// Indices into `points` where a smooth stroke turns a sharp corner rather
+    /// than curving through — B's waist, where both bowls meet the stem. Each
+    /// run between corners is smoothed on its own.
+    var corners: [Int] = []
+
+    init(_ points: [CGPoint], smooth: Bool = false, corners: [Int] = []) {
         self.points = points
         self.smooth = smooth
+        self.corners = corners
     }
 }
 

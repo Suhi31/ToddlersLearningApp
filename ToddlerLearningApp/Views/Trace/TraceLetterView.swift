@@ -153,12 +153,23 @@ struct TraceLetterView: View {
                 .fill(AppColors.card)
                 .softShadow()
 
-            // Faint shape recognition cue behind the dotted guide — no longer
-            // load-bearing for hit-testing, unlike the old approach where this
-            // exact glyph doubled as the mask source.
-            Text(letter.uppercase)
-                .font(.system(size: size * 0.8, weight: .heavy, design: .rounded))
-                .foregroundStyle(tint.opacity(0.08))
+            // Faint letter behind the dotted guide, drawn from the stroke paths
+            // themselves rather than a font glyph: a glyph's proportions never
+            // matched the hand-authored strokes, so it sat off to one side of
+            // the path it was meant to sit under. All strokes go into one path,
+            // stroked once, so where they cross (A's crossbar, B's stem) the
+            // overlap isn't drawn darker.
+            Canvas { context, _ in
+                var letterShape = Path()
+                for path in viewModel.guidePaths {
+                    letterShape.addPath(path)
+                }
+                context.stroke(
+                    letterShape,
+                    with: .color(tint.opacity(0.1)),
+                    style: StrokeStyle(lineWidth: size * 0.13, lineCap: .round, lineJoin: .round)
+                )
+            }
 
             // The dotted guide and the hit-testing both come from the same
             // LetterTracePathContent/TracePathSampler geometry, so they can't

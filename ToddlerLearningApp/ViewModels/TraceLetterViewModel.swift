@@ -146,8 +146,10 @@ final class TraceLetterViewModel {
         return letters[currentIndex]
     }
 
-    var canGoBack: Bool { currentIndex > 0 }
-    var canGoForward: Bool { currentIndex < letters.count - 1 }
+    /// Paging wraps round — back from A is Z, forward from Z is A — so both
+    /// arrows are live whenever there's more than one letter.
+    var canGoBack: Bool { letters.count > 1 }
+    var canGoForward: Bool { letters.count > 1 }
 
     var positionCaption: String {
         "\(currentIndex + 1) of \(letters.count)"
@@ -235,7 +237,7 @@ final class TraceLetterViewModel {
 
     func next() {
         guard canGoForward else { return }
-        currentIndex += 1
+        currentIndex = (currentIndex + 1) % letters.count
         haptics.tap()
         setUpCurrentLetter()
         onSafeStoppingPoint?()
@@ -243,7 +245,7 @@ final class TraceLetterViewModel {
 
     func previous() {
         guard canGoBack else { return }
-        currentIndex -= 1
+        currentIndex = (currentIndex - 1 + letters.count) % letters.count
         haptics.tap()
         setUpCurrentLetter()
         onSafeStoppingPoint?()

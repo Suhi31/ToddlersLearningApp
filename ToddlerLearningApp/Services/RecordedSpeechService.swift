@@ -6,7 +6,7 @@
 //  comment already anticipated: plays real bundled voice clips instead of
 //  synthesizing speech, falling back to the synthesized `SpeechService` for
 //  any moment that hasn't been recorded yet — so content can be filled in
-//  incrementally, one letter or one praise line at a time, without ever
+//  incrementally, one letter or number at a time, without ever
 //  leaving a gap in coverage. With zero clips bundled, every call falls
 //  through to `fallback` and behavior is identical to using `SpeechService`
 //  directly.
@@ -23,11 +23,6 @@
 //    letter-<ID>-word.m4a      e.g. letter-C-word.m4a       ("C is for Cat")
 //    number-<ID>-name.m4a      e.g. number-1-name.m4a       ("One.")
 //    number-<ID>-counting.m4a  e.g. number-3-counting.m4a   ("One, two, three")
-//    praise-<anything>.m4a     any number of generic praise clips — never
-//                              says a name, since arbitrary child names
-//                              can't be pre-recorded
-//    encourage-<ID>-<anything>.m4a   e.g. encourage-D-1.m4a, one or more
-//                                    per letter
 //  Coverage can be partial: an uncovered letter/number/moment transparently
 //  falls back to TTS, so there's no requirement to record everything before
 //  any of it ships.
@@ -69,6 +64,12 @@ final class RecordedSpeechService: SpeechServicing {
     func speak(_ text: String) {
         stop()
         fallback.speak(text)
+    }
+
+    /// Same reasoning as `speak(_:)`.
+    func speakAndWait(_ sentences: [String]) async {
+        stop()
+        await fallback.speakAndWait(sentences)
     }
 
     // MARK: - Letters
@@ -123,38 +124,6 @@ final class RecordedSpeechService: SpeechServicing {
         return clips.count == 2 ? clips : nil
     }
 
-    // MARK: - Praise / encourage
-
-    func praise(childName: String?) {
-        guard isSoundEnabled else { return }
-        stop()
-
-        guard let clip = clips(matchingPrefix: "praise-").randomElement() else {
-            fallback.praise(childName: childName)
-            return
-        }
-        Task { await player.playAndWait(url: clip) }
-    }
-
-    func encourage(_ letter: Letter) {
-        guard isSoundEnabled else { return }
-        stop()
-
-        guard let clip = clips(matchingPrefix: "encourage-\(letter.id)-").randomElement() else {
-            fallback.encourage(letter)
-            return
-        }
-        Task { await player.playAndWait(url: clip) }
-    }
-
-    /// No recording covers an arbitrary picked/target letter pair — same
-    /// reasoning as `speak(_:)` — so this always goes straight to synthesized
-    /// speech.
-    func encourageTowardsTarget(picked: Letter, target: Letter) {
-        stop()
-        fallback.encourageTowardsTarget(picked: picked, target: target)
-    }
-
     func stop() {
         generation += 1
         player.stop()
@@ -172,11 +141,6 @@ final class RecordedSpeechService: SpeechServicing {
 
     private func clipURL(named name: String) -> URL? {
         bundle.url(forResource: name, withExtension: "m4a")
-    }
-
-    private func clips(matchingPrefix prefix: String) -> [URL] {
-        (bundle.urls(forResourcesWithExtension: "m4a", subdirectory: nil) ?? [])
-            .filter { $0.deletingPathExtension().lastPathComponent.hasPrefix(prefix) }
     }
 }
 

@@ -19,12 +19,14 @@ protocol SpeechServicing: AnyObject {
     /// Teaches a number as two beats — its name, then counting up to it — for
     /// the Learn Numbers screen only.
     func teachNumber(_ number: NumberItem) async
-    func praise(childName: String?)
-    func encourage(_ letter: Letter)
-    /// Names what the child just tapped, then redirects to the letter they're
-    /// actually looking for — the "find the letter" quiz's wrong-answer line.
-    /// Deliberately never says "wrong", same reasoning as `encourage`.
-    func encourageTowardsTarget(picked: Letter, target: Letter)
+    /// Speaks each of `sentences` in turn with a short gap between them, and
+    /// returns once the last has finished — or been cut off by a newer line —
+    /// so a caller can move on when the child has actually heard it rather
+    /// than after a guessed delay. Separate utterances rather than one string
+    /// because punctuation alone doesn't reliably break after a lone letter:
+    /// "That's I. A is for Ant" gets read as the initials "I. A." and runs
+    /// straight on.
+    func speakAndWait(_ sentences: [String]) async
     func stop()
 }
 
@@ -64,6 +66,10 @@ final class SpeechService: SpeechServicing {
     /// a pause inside one utterance, so teaching a letter is really three
     /// utterances spoken in sequence with a deliberate silence between them.
     private let teachingGap: Double = 1.0
+
+    /// Gap between the sentences of one `speakAndWait` line — enough to hear
+    /// the break, well short of `teachingGap`'s deliberate teaching beat.
+    private let sentenceGap: Double = 0.35
 
     /// A handful of letter sounds are continuant consonants or clusters whose
     /// plain-text spelling — "ff", "zz", "ks" — isn't a real English word, so
@@ -157,40 +163,22 @@ final class SpeechService: SpeechServicing {
         await engine.speakAndWait(SpeechRequest(text: count, rate: rate))
     }
 
-    func praise(childName: String?) {
-        let options = [
-            "Great job", "Well done", "You got it", "Nice work", "Brilliant",
-            "Woohoo", "Fantastic", "You're a star", "Ta-da", "Amazing",
-            "Super job", "Way to go", "You nailed it", "High five"
-        ]
-        var phrase = options.randomElement() ?? "Great job"
-        if let childName, !childName.isEmpty {
-            phrase += ", \(childName)"
+    func speakAndWait(_ sentences: [String]) async {
+        guard isSoundEnabled else { return }
+        stop()
+        let sequence = generation
+
+        // One wobble for the whole line, not per sentence — a pitch that
+        // jumped between sentences would sound like a different speaker.
+        let lineRate = playfulRate()
+        let linePitch = playfulPitch()
+
+        for (index, sentence) in sentences.enumerated() {
+            if index > 0 {
+                guard await pause(seconds: sentenceGap, sequence: sequence) else { return }
+            }
+            await engine.speakAndWait(SpeechRequest(text: sentence, rate: lineRate, pitchMultiplier: linePitch))
         }
-        speak(phrase + "!")
-    }
-
-    /// Deliberately never says "wrong". At this age a miss should redirect
-    /// attention, not register as failure. Several phrasings rather than one
-    /// fixed sentence, same reasoning as the variety in `praise`.
-    func encourage(_ letter: Letter) {
-        let phrasings = [
-            "This one is \(letter.uppercase). It's for \(letter.word). Let's try again.",
-            "That's okay! This is \(letter.uppercase), for \(letter.word). Try again.",
-            "Almost! This letter is \(letter.uppercase), like \(letter.word). One more try.",
-            "So close! \(letter.uppercase) is for \(letter.word). Let's give it another go."
-        ]
-        speak(phrasings.randomElement() ?? phrasings[0])
-    }
-
-    func encourageTowardsTarget(picked: Letter, target: Letter) {
-        let phrasings = [
-            "That's \(picked.uppercase)! Let's find \(target.uppercase).",
-            "This one is \(picked.uppercase), for \(picked.word). Let's find \(target.uppercase) instead.",
-            "Good try! That's \(picked.uppercase). Now let's find \(target.uppercase).",
-            "That's \(picked.uppercase). Let's look for \(target.uppercase) instead."
-        ]
-        speak(phrasings.randomElement() ?? phrasings[0])
     }
 
     func stop() {

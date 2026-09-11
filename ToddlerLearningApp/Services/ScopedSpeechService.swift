@@ -54,6 +54,11 @@ private final class ScopedSpeechService: SpeechServicing {
         base.speak(text)
     }
 
+    func speakAndWait(_ sentences: [String]) async {
+        claim()
+        await base.speakAndWait(sentences)
+    }
+
     func teachLetter(_ letter: Letter) async {
         claim()
         await base.teachLetter(letter)
@@ -62,21 +67,6 @@ private final class ScopedSpeechService: SpeechServicing {
     func teachNumber(_ number: NumberItem) async {
         claim()
         await base.teachNumber(number)
-    }
-
-    func praise(childName: String?) {
-        claim()
-        base.praise(childName: childName)
-    }
-
-    func encourage(_ letter: Letter) {
-        claim()
-        base.encourage(letter)
-    }
-
-    func encourageTowardsTarget(picked: Letter, target: Letter) {
-        claim()
-        base.encourageTowardsTarget(picked: picked, target: target)
     }
 
     /// A no-op once another screen has spoken since — whatever is playing

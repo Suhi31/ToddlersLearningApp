@@ -320,11 +320,13 @@ struct ProgressServiceTests {
     func numberQuestionShape() throws {
         let (service, child) = try Self.makeService()
 
-        let question = try #require(service.makeNumberQuestion(for: child, distractorCount: 3))
+        let object = NumberContent.countingObjects[0]
+        let question = try #require(service.makeNumberQuestion(for: child, showing: object, distractorCount: 3))
 
         #expect(question.options.count == 4)
         #expect(question.options.contains(question.answer.id))
         #expect(Set(question.options).count == question.options.count)
+        #expect(question.object == object)
     }
 
     // MARK: - Tracing parity

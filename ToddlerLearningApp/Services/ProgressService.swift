@@ -122,10 +122,11 @@ final class ProgressService {
         }
     }
 
-    /// Builds one quantity-matching question: the correct count plus up to 4
-    /// wrong numeral options, shuffled.
+    /// Builds one quantity-matching question: `object` shown as many times as
+    /// the correct count, plus up to 4 wrong numeral options, shuffled.
     func makeNumberQuestion(for child: ChildProfile,
                             excluding excluded: Int? = nil,
+                            showing object: CountingObject,
                             distractorCount: Int = 4) -> NumberQuizQuestion? {
         guard let answer = nextNumber(for: child, excluding: excluded) else { return nil }
 
@@ -136,7 +137,7 @@ final class ProgressService {
             .prefix(distractorCount)
 
         let options = (Array(distractors) + [answer.id]).shuffled()
-        return NumberQuizQuestion(answer: answer, options: options)
+        return NumberQuizQuestion(answer: answer, object: object, options: options)
     }
 
     // MARK: - Tracing
@@ -250,10 +251,12 @@ struct QuizQuestion: Identifiable, Hashable {
     let options: [Letter]
 }
 
-/// One quantity-matching question: how many of `answer.emoji` are shown, plus
-/// the numeral options (including the correct count) to choose from.
+/// One quantity-matching question: `object` shown `answer.id` times, plus the
+/// numeral options (including the correct count) to choose from. The object
+/// is picked independently of the count — see `CountingObjectDeck`.
 struct NumberQuizQuestion: Identifiable, Hashable {
     let id = UUID()
     let answer: NumberItem
+    let object: CountingObject
     let options: [Int]
 }

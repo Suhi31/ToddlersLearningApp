@@ -7,11 +7,13 @@
 //  its own protocol, same reasoning as SpeechServicing: call sites depend on
 //  RhymeAudioPlaying, not AVAudioPlayer directly.
 //
-//  Audio files are not bundled yet. Sourcing licensed or public-domain
-//  recordings and adding them to a Resources/RhymeAudio folder reference is a
-//  content task, not an engineering one — see docs/PRODUCT_SPEC.md. Until
-//  then `play(_:)` fails silently: a missing clip should never crash or block
-//  the UI, only produce silence.
+//  Licensed/public-domain recordings are not bundled yet — sourcing them and
+//  adding them to a Resources/RhymeAudio folder reference is a content task,
+//  not an engineering one — see docs/PRODUCT_SPEC.md. Until then, `play(_:)`
+//  falls back to reading the lyric lines aloud with AVSpeechSynthesizer, one
+//  line at a time, so the feature works end-to-end rather than playing
+//  silence. This is a placeholder, not a real "sing along" — swap it out the
+//  moment a bundled clip exists for a given rhyme.
 //
 //  This service only knows about audio playback. Silencing any in-flight
 //  SpeechService utterance before a rhyme starts is RhymeDetailViewModel's job
@@ -55,13 +57,28 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private var progressTimer: Timer?
 
+    /// Toddler-comfortable rate, matching `SpeechService`'s own tuning — kept
+    /// as a separate constant rather than shared, since the two services
+    /// deliberately don't know about each other (see header comment above).
+    private let synthesisRate: Float = 0.42
+
+    @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
+    @ObservationIgnored private var synthesizedLines: [String] = []
+    @ObservationIgnored private var currentLineIndex = 0
+    @ObservationIgnored private var isSynthesizing = false
+
+    override init() {
+        super.init()
+        synthesizer.delegate = self
+    }
+
     func play(_ rhyme: Rhyme) {
         let name = rhyme.audioFileName as NSString
         guard let url = Bundle.main.url(
             forResource: name.deletingPathExtension,
             withExtension: name.pathExtension
         ) else {
-            stop()
+            playSynthesized(rhyme)
             return
         }
 
@@ -80,12 +97,21 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
     }
 
     func pause() {
-        player?.pause()
+        if isSynthesizing {
+            synthesizer.pauseSpeaking(at: .word)
+        } else {
+            player?.pause()
+        }
         isPlaying = false
         stopProgressTimer()
     }
 
     func resume() {
+        if isSynthesizing {
+            isPlaying = true
+            synthesizer.continueSpeaking()
+            return
+        }
         guard let player else { return }
         player.play()
         isPlaying = true
@@ -93,11 +119,71 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
     }
 
     func stop() {
+        if isSynthesizing {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+        isSynthesizing = false
+        synthesizedLines = []
+        currentLineIndex = 0
         player?.stop()
         player = nil
         isPlaying = false
         progress = 0
         stopProgressTimer()
+    }
+
+    // MARK: - Synthesized placeholder (no bundled recording yet)
+
+    private func playSynthesized(_ rhyme: Rhyme) {
+        stop()
+        guard !rhyme.lines.isEmpty else { return }
+
+        configureAudioSession()
+        synthesizedLines = rhyme.lines
+        currentLineIndex = 0
+        isSynthesizing = true
+        isPlaying = true
+        progress = 0
+        speakCurrentLine()
+    }
+
+    private func speakCurrentLine() {
+        guard currentLineIndex < synthesizedLines.count else {
+            finishSynthesizing()
+            return
+        }
+        let utterance = AVSpeechUtterance(string: synthesizedLines[currentLineIndex])
+        utterance.rate = synthesisRate
+        utterance.pitchMultiplier = 1.15
+        synthesizer.speak(utterance)
+    }
+
+    private func advanceToNextLine() {
+        guard isSynthesizing else { return }
+        currentLineIndex += 1
+        if currentLineIndex >= synthesizedLines.count {
+            finishSynthesizing()
+        } else {
+            progress = Double(currentLineIndex) / Double(synthesizedLines.count)
+            speakCurrentLine()
+        }
+    }
+
+    /// `onFinished` fires here too, same as the natural end of a recorded
+    /// clip — see the protocol doc.
+    private func finishSynthesizing() {
+        isSynthesizing = false
+        isPlaying = false
+        progress = 0
+        onFinished?()
+    }
+
+    private func updateSynthesisProgress(range: NSRange, in text: String) {
+        guard isSynthesizing, !synthesizedLines.isEmpty else { return }
+        let length = (text as NSString).length
+        guard length > 0 else { return }
+        let withinLine = Double(range.location) / Double(length)
+        progress = (Double(currentLineIndex) + withinLine) / Double(synthesizedLines.count)
     }
 
     private func configureAudioSession() {
@@ -130,6 +216,23 @@ extension RhymeAudioService: AVAudioPlayerDelegate {
             guard let self else { return }
             stop()
             onFinished?()
+        }
+    }
+}
+
+extension RhymeAudioService: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                        willSpeakRangeOfSpeechString characterRange: NSRange,
+                                        utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in
+            self?.updateSynthesisProgress(range: characterRange, in: utterance.speechString)
+        }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                        didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in
+            self?.advanceToNextLine()
         }
     }
 }

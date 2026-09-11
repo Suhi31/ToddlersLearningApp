@@ -67,9 +67,11 @@ struct NumberQuizView: View {
             .animation(.spring(response: 0.4, dampingFraction: 0.5),
                        value: viewModel.feedback)
 
-            Text("How many do you see?")
+            Text(viewModel.promptText)
                 .font(AppFonts.body)
                 .foregroundStyle(AppColors.subtitle)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, AppSpacing.element)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, AppSpacing.section)

@@ -129,21 +129,35 @@ struct BrowseScreen<Item: BrowsableItem, Stage: View>: View {
     /// Jumping straight to an item matters — a child who wants "M" for their
     /// own name should not have to page through twelve others.
     private var strip: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVGrid(columns: stripColumns, spacing: 10) {
-                ForEach(viewModel.items) { item in
-                    ContentTile(
-                        item: item,
-                        mastery: viewModel.mastery(for: item),
-                        isHighlighted: item == viewModel.current
-                    ) {
-                        viewModel.jump(to: item)
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                LazyVGrid(columns: stripColumns, spacing: 10) {
+                    ForEach(viewModel.items) { item in
+                        ContentTile(
+                            item: item,
+                            mastery: viewModel.mastery(for: item),
+                            isHighlighted: item == viewModel.current
+                        ) {
+                            viewModel.jump(to: item)
+                        }
+                        .id(item.id)
                     }
                 }
+                .padding(.horizontal, 2)
             }
-            .padding(.horizontal, 2)
+            .frame(maxHeight: .infinity)
+            .onChange(of: viewModel.current) { _, newValue in
+                guard let newValue else { return }
+                withAnimation {
+                    proxy.scrollTo(newValue.id, anchor: .center)
+                }
+            }
+            .onAppear {
+                if let current = viewModel.current {
+                    proxy.scrollTo(current.id, anchor: .center)
+                }
+            }
         }
-        .frame(maxHeight: .infinity)
     }
 }
 

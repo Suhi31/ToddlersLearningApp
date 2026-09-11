@@ -38,7 +38,7 @@ protocol QuizDomain {
     func nextQuestion(for child: ChildProfile, excluding previous: Answer?) -> Question?
     func recordAnswer(child: ChildProfile, question: Question, correct: Bool)
     func promptSpeech(for question: Question) -> String
-    func incorrectSpeech(for question: Question, speechService: SpeechServicing)
+    func incorrectSpeech(for question: Question, picked: Selection, speechService: SpeechServicing)
 }
 
 @MainActor
@@ -133,7 +133,7 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
         } else {
             feedback = .incorrect(picked)
             haptics.gentleMiss()
-            domain.incorrectSpeech(for: question, speechService: speechService)
+            domain.incorrectSpeech(for: question, picked: selection, speechService: speechService)
         }
 
         advanceTask?.cancel()
@@ -227,11 +227,11 @@ struct LetterQuizDomain: QuizDomain {
     }
 
     func promptSpeech(for question: QuizQuestion) -> String {
-        "Which letter does \(question.answer.word) start with?"
+        "Can you find the letter \(question.answer.uppercase)?"
     }
 
-    func incorrectSpeech(for question: QuizQuestion, speechService: SpeechServicing) {
-        speechService.encourage(question.answer)
+    func incorrectSpeech(for question: QuizQuestion, picked: Letter, speechService: SpeechServicing) {
+        speechService.encourageTowardsTarget(picked: picked, target: question.answer)
     }
 }
 
@@ -270,12 +270,16 @@ struct NumberQuizDomain: QuizDomain {
 
     let progressService: ProgressService
 
+    /// A class, so its position carries across `nextQuestion` calls on this
+    /// otherwise immutable domain value.
+    private let objects = CountingObjectDeck()
+
     func answer(for question: NumberQuizQuestion) -> Int { question.answer.id }
     func answer(for selection: Int) -> Int { selection }
     func options(for question: NumberQuizQuestion) -> [Int] { question.options }
 
     func nextQuestion(for child: ChildProfile, excluding previous: Int?) -> NumberQuizQuestion? {
-        progressService.makeNumberQuestion(for: child, excluding: previous)
+        progressService.makeNumberQuestion(for: child, excluding: previous, showing: objects.next())
     }
 
     func recordAnswer(child: ChildProfile, question: NumberQuizQuestion, correct: Bool) {
@@ -283,11 +287,16 @@ struct NumberQuizDomain: QuizDomain {
     }
 
     func promptSpeech(for question: NumberQuizQuestion) -> String {
-        "How many do you see?"
+        "How many \(question.object.plural) do you see?"
     }
 
-    func incorrectSpeech(for question: NumberQuizQuestion, speechService: SpeechServicing) {
-        speechService.speak("This one is \(question.answer.name). Let's try again.")
+    /// Says the count *with* the object — "There are four dogs" — so the
+    /// correction models counting a quantity rather than just naming a numeral.
+    func incorrectSpeech(for question: NumberQuizQuestion, picked: Int, speechService: SpeechServicing) {
+        let count = question.answer.id
+        let verb = count == 1 ? "is" : "are"
+        let things = question.object.name(forCount: count)
+        speechService.speak("There \(verb) \(question.answer.name.lowercased()) \(things). Let's try again.")
     }
 }
 
@@ -310,6 +319,11 @@ extension QuizEngineViewModel where Domain == NumberQuizDomain {
         )
     }
 
-    var promptEmoji: String { question?.answer.emoji ?? "❓" }
+    var promptEmoji: String { question?.object.emoji ?? "❓" }
     var promptCount: Int { question?.answer.id ?? 0 }
+
+    /// The on-screen twin of the spoken prompt, so it names the object too.
+    var promptText: String {
+        question.map(domain.promptSpeech(for:)) ?? "How many do you see?"
+    }
 }

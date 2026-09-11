@@ -45,7 +45,7 @@ struct QuizView: View {
                 .font(AppFonts.hero.weight(.bold))
                 .foregroundStyle(AppColors.title)
 
-            Text("Which letter does it start with?")
+            Text("Can you find the letter?")
                 .font(AppFonts.body)
                 .foregroundStyle(AppColors.subtitle)
         }

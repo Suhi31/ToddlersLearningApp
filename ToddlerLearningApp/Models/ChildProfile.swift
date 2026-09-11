@@ -37,6 +37,13 @@ final class ChildProfile {
     var starsEarnedToday: Int = 0
     var starsEarnedTodayDate: Date?
 
+    /// Build the Word's difficulty level — an index into
+    /// `WordBuildProgression.levels` — so a child picks up where they left off
+    /// rather than starting back at the easiest words every visit. Written by
+    /// `ProgressService.recordWordBuildLevel(_:for:)`. Defaulted, so existing
+    /// profiles migrate automatically and start at the first level.
+    var wordBuildLevel: Int = 0
+
     @Relationship(deleteRule: .cascade, inverse: \LetterProgress.child)
     var progress: [LetterProgress] = []
 

@@ -252,6 +252,7 @@ final class AppCoordinator: Coordinator {
                         child: activeChild,
                         speechService: dependencies.makeSpeechService(),
                         rewardService: dependencies.rewardService,
+                        progressService: dependencies.progressService,
                         haptics: dependencies.haptics
                     ),
                     coordinator: self

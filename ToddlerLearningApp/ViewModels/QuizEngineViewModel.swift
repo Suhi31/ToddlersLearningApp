@@ -387,16 +387,17 @@ struct LetterQuizDomain: QuizDomain {
 
     func revealsAnswer(afterMisses misses: Int) -> Bool { misses >= 2 }
 
-    /// Names the letter and its picture. Deliberately no letter *sound* ("B
-    /// says buh"): the synthesized phonemes don't sound good enough yet to
-    /// drop into the middle of a sentence.
+    /// Names the letter and its picture, always as "W is for Whale" — the same
+    /// phrasing Learn Letters teaches. ("W, like Whale" read less clearly.)
+    /// Deliberately no letter *sound* ("B says buh"): the synthesized
+    /// phonemes don't sound good enough yet to drop into a sentence.
     private func teachingLine(for question: QuizQuestion) -> [String] {
         let letter = question.answer.uppercase
         let word = question.picture.word
         let lines = [
-            ["That's \(letter).", "\(letter) is for \(word)."],
-            ["\(letter) is for \(word)!"],
-            ["\(letter), like \(word)!"]
+            // "the letter A", not a bare "A." — see `incorrectSpeech`.
+            ["That's the letter \(letter).", "\(letter) is for \(word)."],
+            ["\(letter) is for \(word)!"]
         ]
         return lines.randomElement() ?? lines[0]
     }

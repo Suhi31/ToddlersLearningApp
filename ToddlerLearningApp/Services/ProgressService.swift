@@ -194,6 +194,16 @@ final class ProgressService {
         save()
     }
 
+    // MARK: - Build the Word
+
+    /// Saves the child's Build the Word level — see `WordBuildProgression` —
+    /// so it carries over to their next visit. A no-op when it hasn't changed.
+    func recordWordBuildLevel(_ levelIndex: Int, for child: ChildProfile) {
+        guard child.wordBuildLevel != levelIndex else { return }
+        child.wordBuildLevel = levelIndex
+        save()
+    }
+
     // MARK: - Shared mutation (letters, numbers and tracing apply identical rules)
 
     /// Applies one answer's promotion/demotion rules to either progress model.

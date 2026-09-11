@@ -49,8 +49,13 @@ final class HomeViewModel {
         min(1, Double(child.starsEarnedTodayCount) / Double(RewardService.dailyGoalTarget))
     }
 
+    /// "3 of 5 stars today" on the way to the goal; once it's met, a plain
+    /// "Goal reached!" — the raw count kept climbing past the target and read
+    /// as nonsense ("41 of 5 stars today"). The total is in the header anyway.
     var dailyGoalCaption: String {
-        "\(child.starsEarnedTodayCount) of \(RewardService.dailyGoalTarget) stars today"
+        let earned = child.starsEarnedTodayCount
+        guard earned < RewardService.dailyGoalTarget else { return "Goal reached! 🎉" }
+        return "\(earned) of \(RewardService.dailyGoalTarget) stars today"
     }
 
     /// Shown to the child as a soft heads-up rather than a countdown, and only

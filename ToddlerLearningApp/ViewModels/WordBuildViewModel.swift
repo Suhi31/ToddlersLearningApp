@@ -13,14 +13,76 @@
 //  the word within a few taps — the last letter for free. Now the pool mixes
 //  in letters that aren't in the word, a wrong tap locks the tiles while the
 //  voice names what was tapped and what's needed, and the star only comes for
-//  a word spelled with at most `missesAllowedForStar` wrong taps.
+//  a clean word: at most `missesAllowedForStar` wrong taps, and no letter that
+//  needed showing. A child who's stuck on a letter gets it shown after
+//  `missesBeforeReveal` wrong taps, so they can always finish.
 //
-//  Session-only: this activity has no persisted mastery tracking of its own.
-//  It reinforces letters the child is already building via Learn/Quiz rather
-//  than introducing a third thing for the parent dashboard to report on.
+//  How hard it is follows the child — see `WordBuildProgression` — and the
+//  level is saved per child, so they pick up where they left off. Beyond that
+//  this activity keeps no persisted mastery tracking of its own: it reinforces
+//  letters the child is already building via Learn/Quiz rather than
+//  introducing a third thing for the parent dashboard to report on.
 //
 
 import Foundation
+
+/// How hard Build the Word is right now: how long the word is and how many
+/// wrong-letter tiles come with it. Moves up after a run of clean words and
+/// back down after a couple of struggles, so it follows the child rather
+/// than a fixed schedule. The level is saved per child
+/// (`ChildProfile.wordBuildLevel`); the runs toward the next one start fresh
+/// each visit.
+struct WordBuildProgression {
+
+    struct Level: Equatable {
+        let wordLength: Int
+        let distractors: Int
+
+        /// How many of the distractors may be shaped like the word's own
+        /// letters (B beside D) — the hardest kind to rule out.
+        let lookAlikes: Int
+    }
+
+    static let levels = [
+        Level(wordLength: 3, distractors: 2, lookAlikes: 1),
+        Level(wordLength: 3, distractors: 4, lookAlikes: 2),
+        Level(wordLength: 4, distractors: 4, lookAlikes: 2)
+    ]
+
+    /// Clean words in a row that move up a level.
+    static let cleanRunToLevelUp = 3
+
+    /// Words in a row without a star that move back down one.
+    static let missRunToLevelDown = 2
+
+    private(set) var levelIndex: Int
+    private var cleanRun = 0
+    private var missRun = 0
+
+    init(levelIndex: Int = 0) {
+        self.levelIndex = min(max(levelIndex, 0), Self.levels.count - 1)
+    }
+
+    var level: Level { Self.levels[levelIndex] }
+
+    mutating func record(clean: Bool) {
+        if clean {
+            cleanRun += 1
+            missRun = 0
+        } else {
+            missRun += 1
+            cleanRun = 0
+        }
+
+        if cleanRun >= Self.cleanRunToLevelUp, levelIndex < Self.levels.count - 1 {
+            levelIndex += 1
+            cleanRun = 0
+        } else if missRun >= Self.missRunToLevelDown, levelIndex > 0 {
+            levelIndex -= 1
+            missRun = 0
+        }
+    }
+}
 
 @MainActor
 @Observable
@@ -40,11 +102,11 @@ final class WordBuildViewModel {
         var shakes = 0
     }
 
-    /// Letters mixed into the pool that aren't in the word.
-    static let distractorCount = 3
-
     /// Wrong taps a word can take and still earn its star.
     static let missesAllowedForStar = 2
+
+    /// Wrong taps on one letter before its tile is shown.
+    static let missesBeforeReveal = 2
 
     /// Words to solve per round (spec F27) — a finish line rather than the
     /// activity running forever until the child backs out.
@@ -57,7 +119,7 @@ final class WordBuildViewModel {
     private(set) var starsThisSession = 0
 
     /// Stars earned in the current round, for the round-complete screen.
-    /// Not `wordsCompleted`: a word finished with too many misses earns none.
+    /// Not `wordsCompleted`: a word that wasn't clean earns none.
     private(set) var starsThisRound = 0
 
     /// Whether the word just finished earned its star — drives the star burst.
@@ -75,6 +137,15 @@ final class WordBuildViewModel {
 
     private(set) var missesThisWord = 0
 
+    /// The tile lit up once a letter has had `missesBeforeReveal` wrong taps —
+    /// the right one, so a child who's stuck can still finish. Cleared when
+    /// that letter is placed.
+    private(set) var revealedTileID: UUID?
+
+    /// Whether any letter of this word needed showing. The word still
+    /// finishes, but it isn't clean, so it earns no star.
+    private(set) var neededHelp = false
+
     /// Words solved so far in the current round.
     private(set) var wordsCompleted = 0
 
@@ -88,13 +159,16 @@ final class WordBuildViewModel {
     let child: ChildProfile
     private let speechService: SpeechServicing
     private let rewardService: RewardService
+    private let progressService: ProgressService
     private let haptics: HapticsService
     private let words: [WordItem]
+    private var progression: WordBuildProgression
 
     /// The shortest a wrong tap locks the tiles for — all that's left when
     /// there's no spoken line to wait for, e.g. with sound switched off.
     private let minimumLockTime: Duration
 
+    private var missesOnSlot = 0
     private var pendingTask: Task<Void, Never>?
     private var lockTask: Task<Void, Never>?
 
@@ -104,22 +178,30 @@ final class WordBuildViewModel {
     init(child: ChildProfile,
          speechService: SpeechServicing,
          rewardService: RewardService,
+         progressService: ProgressService,
          haptics: HapticsService,
          wordsPerRound: Int = 5,
          words: [WordItem] = WordBuildContent.words,
+         startingLevel: Int? = nil,
          minimumLockTime: Duration = .seconds(1)) {
         self.child = child
         self.speechService = speechService
         self.rewardService = rewardService
+        self.progressService = progressService
         self.haptics = haptics
         self.wordsPerRound = wordsPerRound
         self.words = words
         self.minimumLockTime = minimumLockTime
-        self.currentWord = words.randomElement() ?? WordBuildContent.words[0]
+        // The child's saved level unless a caller overrides it.
+        let progression = WordBuildProgression(levelIndex: startingLevel ?? child.wordBuildLevel)
+        self.progression = progression
+        self.currentWord = Self.pickWord(from: words, for: progression.level, excluding: nil)
         setUp(for: currentWord)
     }
 
     var promptEmoji: String { currentWord.emoji }
+
+    var level: WordBuildProgression.Level { progression.level }
 
     /// The slot the next correct letter goes in — outlined on screen, and
     /// what the spoken question is about.
@@ -162,6 +244,8 @@ final class WordBuildViewModel {
         for other in scrambledLetters.indices {
             scrambledLetters[other].isRejected = false
         }
+        missesOnSlot = 0
+        revealedTileID = nil
         haptics.tap()
 
         // A bare single-character utterance makes AVSpeechSynthesizer spell it
@@ -197,8 +281,9 @@ final class WordBuildViewModel {
 
     /// A wrong tap: the tile shakes and greys out for this slot, and every
     /// tile locks while the voice names what was tapped and what's needed.
-    /// Deliberately never says "wrong" — a miss should redirect, not register
-    /// as failure.
+    /// After `missesBeforeReveal` on one letter, the right tile lights up
+    /// instead. Deliberately never says "wrong" — a miss should redirect, not
+    /// register as failure.
     ///
     /// Always "the letter A", never a bare "A" mid-sentence: the voice reads a
     /// lone A as the word "a" ("uh"), and E comes out just as unclear.
@@ -207,13 +292,23 @@ final class WordBuildViewModel {
         scrambledLetters[index].isRejected = true
         scrambledLetters[index].shakes += 1
         missesThisWord += 1
+        missesOnSlot += 1
         haptics.gentleMiss()
+
+        var sentences = ["That's the letter \(tapped).", "We need the letter \(expected)!"]
+        if missesOnSlot >= Self.missesBeforeReveal,
+           revealedTileID == nil,
+           let answer = scrambledLetters.first(where: { $0.letter == expected && !$0.isUsed }) {
+            revealedTileID = answer.id
+            neededHelp = true
+            sentences = ["That's the letter \(tapped).", "Here's the letter \(expected)!"]
+        }
 
         isLocked = true
         lockTask?.cancel()
         lockTask = Task { [weak self, speechService, minimumLockTime] in
             let started = ContinuousClock.now
-            await speechService.speakAndWait(["That's the letter \(tapped).", "We need the letter \(expected)!"])
+            await speechService.speakAndWait(sentences)
             let elapsed = ContinuousClock.now - started
             try? await Task.sleep(for: max(minimumLockTime - elapsed, .zero))
             guard !Task.isCancelled else { return }
@@ -223,12 +318,14 @@ final class WordBuildViewModel {
 
     private func complete(lastLetter: String) {
         isComplete = true
-        didEarnStar = missesThisWord <= Self.missesAllowedForStar
+        didEarnStar = missesThisWord <= Self.missesAllowedForStar && !neededHelp
         if didEarnStar {
             starsThisSession += 1
             starsThisRound += 1
             rewardService.awardStars(1, to: child)
         }
+        progression.record(clean: didEarnStar)
+        progressService.recordWordBuildLevel(progression.levelIndex, for: child)
         haptics.success()
 
         let sentences = ["\(lastLetter).", "\(spokenWord)!", didEarnStar ? "Great job!" : "You did it!"]
@@ -253,12 +350,7 @@ final class WordBuildViewModel {
     }
 
     private func nextWord() {
-        let previous = currentWord.id
-        var candidate = words.randomElement() ?? WordBuildContent.words[0]
-        while candidate.id == previous, words.count > 1 {
-            candidate = words.randomElement() ?? WordBuildContent.words[0]
-        }
-
+        let candidate = Self.pickWord(from: words, for: progression.level, excluding: currentWord.id)
         currentWord = candidate
         setUp(for: candidate)
         isComplete = false
@@ -269,15 +361,30 @@ final class WordBuildViewModel {
 
     private func setUp(for word: WordItem) {
         missesThisWord = 0
-        let tiles = word.letters + Self.distractors(for: word)
+        missesOnSlot = 0
+        revealedTileID = nil
+        neededHelp = false
+        let tiles = word.letters + Self.distractors(for: word, level: progression.level)
         scrambledLetters = tiles.map { ScrambledLetter(letter: $0) }.shuffled()
         filledLetters = Array(repeating: nil, count: word.letters.count)
     }
 
-    /// Letters that aren't in the word: up to two shaped like its own letters
-    /// (B beside D), so telling them apart matters, and the rest any other
-    /// letter.
-    static func distractors(for word: WordItem) -> [String] {
+    /// A word of the level's length, not the one just played. Falls back to
+    /// any word if the list has none of that length.
+    private static func pickWord(from words: [WordItem],
+                                 for level: WordBuildProgression.Level,
+                                 excluding previous: String?) -> WordItem {
+        let ofLength = words.filter { $0.letters.count == level.wordLength }
+        let pool = ofLength.isEmpty ? words : ofLength
+        return pool.filter { $0.id != previous }.randomElement()
+            ?? pool.first
+            ?? WordBuildContent.words[0]
+    }
+
+    /// Letters that aren't in the word: up to `level.lookAlikes` shaped like
+    /// its own letters (B beside D), so telling them apart matters, and the
+    /// rest any other letter.
+    static func distractors(for word: WordItem, level: WordBuildProgression.Level) -> [String] {
         let inWord = Set(word.letters)
         let lookAlikes = Set(word.letters.flatMap { AlphabetContent.lookAlikes(of: $0) })
             .subtracting(inWord)
@@ -285,8 +392,8 @@ final class WordBuildViewModel {
             .subtracting(inWord)
             .subtracting(lookAlikes)
 
-        let chosenLookAlikes = Array(lookAlikes.shuffled().prefix(2))
-        return chosenLookAlikes + others.shuffled().prefix(distractorCount - chosenLookAlikes.count)
+        let chosenLookAlikes = Array(lookAlikes.shuffled().prefix(min(level.lookAlikes, level.distractors)))
+        return chosenLookAlikes + others.shuffled().prefix(level.distractors - chosenLookAlikes.count)
     }
 
     /// What the child is asked about the slot they're filling — a real

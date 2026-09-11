@@ -149,6 +149,15 @@ struct WordBuildView: View {
                         .frame(width: tileSide, height: tileSide)
                         .background(tileBackground(tile))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
+                        // The tile shown after repeated misses on one letter.
+                        .overlay {
+                            if tile.id == viewModel.revealedTileID {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppColors.success, lineWidth: 4)
+                            }
+                        }
+                        .shadow(color: tile.id == viewModel.revealedTileID ? AppColors.success.opacity(0.6) : .clear,
+                                radius: 10)
                 }
                 .buttonStyle(.plain)
                 .disabled(tile.isUsed || tile.isRejected || viewModel.isComplete || viewModel.isLocked)
@@ -171,6 +180,7 @@ struct WordBuildView: View {
     }
 
     private func tileBackground(_ tile: WordBuildViewModel.ScrambledLetter) -> Color {
+        if tile.id == viewModel.revealedTileID { return AppColors.success.opacity(0.35) }
         if tile.isRejected { return AppColors.disabledIcon.opacity(0.35) }
         return AppColors.primary.opacity(tile.isUsed ? 0.08 : 0.25)
     }

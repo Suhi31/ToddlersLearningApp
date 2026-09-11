@@ -48,6 +48,11 @@ final class RecordedSpeechService: SpeechServicing {
     /// synthesized one.
     private let teachingGap: Double = 1.0
 
+    /// Same role as `SpeechService.generation`: bumped by every `stop()`,
+    /// which every line starts with, so a clip sequence that has been talked
+    /// over gives up at its next gap instead of carrying on underneath.
+    private var generation = 0
+
     private var isSoundEnabled: Bool {
         (UserDefaults.standard.object(forKey: SpeechService.soundEnabledKey) as? Bool) ?? true
     }
@@ -62,6 +67,7 @@ final class RecordedSpeechService: SpeechServicing {
     /// Free-form text has no "moment" to look a recording up by, so this
     /// always goes straight to synthesized speech.
     func speak(_ text: String) {
+        stop()
         fallback.speak(text)
     }
 
@@ -69,6 +75,8 @@ final class RecordedSpeechService: SpeechServicing {
 
     func teachLetter(_ letter: Letter) async {
         guard isSoundEnabled else { return }
+        stop()
+        let sequence = generation
 
         guard let beats = letterBeats(for: letter) else {
             await fallback.teachLetter(letter)
@@ -78,7 +86,7 @@ final class RecordedSpeechService: SpeechServicing {
         for (index, url) in beats.enumerated() {
             await player.playAndWait(url: url)
             if index < beats.count - 1 {
-                guard await pause(seconds: teachingGap) else { return }
+                guard await pause(seconds: teachingGap, sequence: sequence) else { return }
             }
         }
     }
@@ -93,6 +101,8 @@ final class RecordedSpeechService: SpeechServicing {
 
     func teachNumber(_ number: NumberItem) async {
         guard isSoundEnabled else { return }
+        stop()
+        let sequence = generation
 
         guard let beats = numberBeats(for: number) else {
             await fallback.teachNumber(number)
@@ -102,7 +112,7 @@ final class RecordedSpeechService: SpeechServicing {
         for (index, url) in beats.enumerated() {
             await player.playAndWait(url: url)
             if index < beats.count - 1 {
-                guard await pause(seconds: teachingGap) else { return }
+                guard await pause(seconds: teachingGap, sequence: sequence) else { return }
             }
         }
     }
@@ -117,6 +127,7 @@ final class RecordedSpeechService: SpeechServicing {
 
     func praise(childName: String?) {
         guard isSoundEnabled else { return }
+        stop()
 
         guard let clip = clips(matchingPrefix: "praise-").randomElement() else {
             fallback.praise(childName: childName)
@@ -127,6 +138,7 @@ final class RecordedSpeechService: SpeechServicing {
 
     func encourage(_ letter: Letter) {
         guard isSoundEnabled else { return }
+        stop()
 
         guard let clip = clips(matchingPrefix: "encourage-\(letter.id)-").randomElement() else {
             fallback.encourage(letter)
@@ -135,16 +147,25 @@ final class RecordedSpeechService: SpeechServicing {
         Task { await player.playAndWait(url: clip) }
     }
 
+    /// No recording covers an arbitrary picked/target letter pair — same
+    /// reasoning as `speak(_:)` — so this always goes straight to synthesized
+    /// speech.
+    func encourageTowardsTarget(picked: Letter, target: Letter) {
+        stop()
+        fallback.encourageTowardsTarget(picked: picked, target: target)
+    }
+
     func stop() {
+        generation += 1
         player.stop()
         fallback.stop()
     }
 
     // MARK: - Sequencing
 
-    private func pause(seconds: Double) async -> Bool {
+    private func pause(seconds: Double, sequence: Int) async -> Bool {
         try? await Task.sleep(for: .seconds(seconds))
-        return !Task.isCancelled
+        return !Task.isCancelled && sequence == generation
     }
 
     // MARK: - Bundle lookup

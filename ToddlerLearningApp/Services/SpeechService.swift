@@ -21,6 +21,10 @@ protocol SpeechServicing: AnyObject {
     func teachNumber(_ number: NumberItem) async
     func praise(childName: String?)
     func encourage(_ letter: Letter)
+    /// Names what the child just tapped, then redirects to the letter they're
+    /// actually looking for — the "find the letter" quiz's wrong-answer line.
+    /// Deliberately never says "wrong", same reasoning as `encourage`.
+    func encourageTowardsTarget(picked: Letter, target: Letter)
     func stop()
 }
 
@@ -96,6 +100,14 @@ final class SpeechService: SpeechServicing {
     /// can safely live on the main actor.
     private let engine = SpeechEngine()
 
+    /// Bumped by every `stop()`, which every new line starts with. A teaching
+    /// sequence notes the value it began under and drops its remaining beats
+    /// once that changes, so a sequence that's been talked over can't resume
+    /// after its next gap. Cancelling the caller's task has the same effect,
+    /// but a screen being navigated away from only does that from
+    /// `onDisappear` — by which point the next screen is already talking.
+    private var generation = 0
+
     func speak(_ text: String) {
         guard isSoundEnabled else { return }
         stop()
@@ -108,16 +120,17 @@ final class SpeechService: SpeechServicing {
     func teachLetter(_ letter: Letter) async {
         guard isSoundEnabled else { return }
         stop()
+        let sequence = generation
 
         // A bare single-character utterance makes AVSpeechSynthesizer spell it
         // out and prefix "capital" to disambiguate case — appending a period
         // keeps the string from being read as exactly one letter, so it just
         // says the letter name.
         await engine.speakAndWait(SpeechRequest(text: "\(letter.uppercase).", rate: rate))
-        guard await pause(seconds: teachingGap) else { return }
+        guard await pause(seconds: teachingGap, sequence: sequence) else { return }
 
         await engine.speakAndWait(phonemeRequest(for: letter))
-        guard await pause(seconds: teachingGap) else { return }
+        guard await pause(seconds: teachingGap, sequence: sequence) else { return }
 
         // Same reasoning as above: "A is for Apple" gets normalized as the
         // indefinite article "a" (the "uh" sound) rather than the letter
@@ -130,9 +143,10 @@ final class SpeechService: SpeechServicing {
     func teachNumber(_ number: NumberItem) async {
         guard isSoundEnabled else { return }
         stop()
+        let sequence = generation
 
         await engine.speakAndWait(SpeechRequest(text: "\(number.name).", rate: rate))
-        guard await pause(seconds: teachingGap) else { return }
+        guard await pause(seconds: teachingGap, sequence: sequence) else { return }
 
         // Counting up to the number is the actual pedagogy — recognising the
         // numeral alone doesn't teach quantity the way saying "one, two,
@@ -169,17 +183,29 @@ final class SpeechService: SpeechServicing {
         speak(phrasings.randomElement() ?? phrasings[0])
     }
 
+    func encourageTowardsTarget(picked: Letter, target: Letter) {
+        let phrasings = [
+            "That's \(picked.uppercase)! Let's find \(target.uppercase).",
+            "This one is \(picked.uppercase), for \(picked.word). Let's find \(target.uppercase) instead.",
+            "Good try! That's \(picked.uppercase). Now let's find \(target.uppercase).",
+            "That's \(picked.uppercase). Let's look for \(target.uppercase) instead."
+        ]
+        speak(phrasings.randomElement() ?? phrasings[0])
+    }
+
     func stop() {
+        generation += 1
         engine.stop()
     }
 
     // MARK: - Sequencing
 
     /// Sleeps for `seconds`, returning `false` if the surrounding task was
-    /// cancelled meanwhile so callers can abandon the rest of a sequence.
-    private func pause(seconds: Double) async -> Bool {
+    /// cancelled or a newer line superseded `sequence` meanwhile, so callers
+    /// can abandon the rest of a sequence. See `generation`.
+    private func pause(seconds: Double, sequence: Int) async -> Bool {
         try? await Task.sleep(for: .seconds(seconds))
-        return !Task.isCancelled
+        return !Task.isCancelled && sequence == generation
     }
 
     private func phonemeRequest(for letter: Letter) -> SpeechRequest {

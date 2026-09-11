@@ -57,7 +57,7 @@ struct RootView: View {
                 viewModel: HomeViewModel(
                     child: child,
                     sessionTimer: coordinator.sessionTimer,
-                    speechService: coordinator.dependencies.speechService,
+                    speechService: coordinator.dependencies.makeSpeechService(),
                     haptics: coordinator.dependencies.haptics
                 ),
                 coordinator: coordinator

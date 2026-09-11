@@ -13,7 +13,6 @@ import SwiftData
 final class AppDependencies {
 
     let modelContext: ModelContext
-    let speechService: SpeechServicing
     let progressService: ProgressService
     let childProfileService: ChildProfileService
     let rewardService: RewardService
@@ -21,18 +20,28 @@ final class AppDependencies {
     let haptics: HapticsService
     let rhymeAudioService: RhymeAudioPlaying
 
+    /// Not exposed directly: each screen takes its own handle from
+    /// `makeSpeechService()`. See `SpeechScopes`.
+    private let speechScopes: SpeechScopes
+
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
         // Wrapped so any bundled voice clips (see RecordedSpeechService's
         // header comment for the naming convention) play automatically —
         // with none bundled yet, this behaves identically to `SpeechService()`.
-        self.speechService = RecordedSpeechService(fallback: SpeechService())
+        self.speechScopes = SpeechScopes(base: RecordedSpeechService(fallback: SpeechService()))
         self.progressService = ProgressService(context: modelContext)
         self.childProfileService = ChildProfileService(context: modelContext)
         self.rewardService = RewardService(context: modelContext)
         self.sessionTimer = SessionTimerService(context: modelContext)
         self.haptics = HapticsService()
         self.rhymeAudioService = RhymeAudioService()
+    }
+
+    /// A new handle onto the one shared speech service, for a single screen's
+    /// view model. Never hand one handle to two screens — see `SpeechScopes`.
+    func makeSpeechService() -> SpeechServicing {
+        speechScopes.makeScope()
     }
 
     /// In-memory stack for previews and tests.

@@ -168,7 +168,7 @@ final class AppCoordinator: Coordinator {
                 LearnAlphabetView(
                     viewModel: LearnAlphabetViewModel(
                         child: activeChild,
-                        speechService: dependencies.speechService,
+                        speechService: dependencies.makeSpeechService(),
                         progressService: dependencies.progressService,
                         haptics: dependencies.haptics
                     ),
@@ -180,7 +180,7 @@ final class AppCoordinator: Coordinator {
                     viewModel: LearnAlphabetViewModel(
                         child: activeChild,
                         startingItem: AlphabetContent.letter(id: letterID),
-                        speechService: dependencies.speechService,
+                        speechService: dependencies.makeSpeechService(),
                         progressService: dependencies.progressService,
                         haptics: dependencies.haptics
                     ),
@@ -191,7 +191,7 @@ final class AppCoordinator: Coordinator {
                 TraceLetterView(
                     viewModel: TraceLetterViewModel(
                         child: activeChild,
-                        speechService: dependencies.speechService,
+                        speechService: dependencies.makeSpeechService(),
                         rewardService: dependencies.rewardService,
                         progressService: dependencies.progressService,
                         haptics: dependencies.haptics
@@ -203,7 +203,7 @@ final class AppCoordinator: Coordinator {
                 QuizView(
                     viewModel: QuizViewModel(
                         child: activeChild,
-                        speechService: dependencies.speechService,
+                        speechService: dependencies.makeSpeechService(),
                         progressService: dependencies.progressService,
                         rewardService: dependencies.rewardService,
                         haptics: dependencies.haptics
@@ -215,7 +215,7 @@ final class AppCoordinator: Coordinator {
                 LearnNumbersView(
                     viewModel: LearnNumbersViewModel(
                         child: activeChild,
-                        speechService: dependencies.speechService,
+                        speechService: dependencies.makeSpeechService(),
                         progressService: dependencies.progressService,
                         haptics: dependencies.haptics
                     ),
@@ -227,7 +227,7 @@ final class AppCoordinator: Coordinator {
                     viewModel: LearnNumbersViewModel(
                         child: activeChild,
                         startingItem: NumberContent.number(id: numberID),
-                        speechService: dependencies.speechService,
+                        speechService: dependencies.makeSpeechService(),
                         progressService: dependencies.progressService,
                         haptics: dependencies.haptics
                     ),
@@ -238,7 +238,7 @@ final class AppCoordinator: Coordinator {
                 NumberQuizView(
                     viewModel: NumberQuizViewModel(
                         child: activeChild,
-                        speechService: dependencies.speechService,
+                        speechService: dependencies.makeSpeechService(),
                         progressService: dependencies.progressService,
                         rewardService: dependencies.rewardService,
                         haptics: dependencies.haptics
@@ -250,7 +250,7 @@ final class AppCoordinator: Coordinator {
                 WordBuildView(
                     viewModel: WordBuildViewModel(
                         child: activeChild,
-                        speechService: dependencies.speechService,
+                        speechService: dependencies.makeSpeechService(),
                         rewardService: dependencies.rewardService,
                         haptics: dependencies.haptics
                     ),
@@ -268,7 +268,7 @@ final class AppCoordinator: Coordinator {
                     RhymeDetailView(
                         viewModel: RhymeDetailViewModel(
                             rhyme: rhyme,
-                            speechService: dependencies.speechService,
+                            speechService: dependencies.makeSpeechService(),
                             rhymeAudioService: dependencies.rhymeAudioService,
                             haptics: dependencies.haptics
                         ),

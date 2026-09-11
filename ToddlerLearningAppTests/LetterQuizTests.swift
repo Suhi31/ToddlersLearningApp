@@ -31,12 +31,15 @@ struct LetterQuizTests {
         return (context, child)
     }
 
-    private static func makeQuiz() throws -> (QuizViewModel, ProgressService, ChildProfile) {
+    /// `speech` is optional rather than defaulting to `SilentSpeech()`: a
+    /// default argument is evaluated outside the main actor that type needs.
+    private static func makeQuiz(speech: SpeechServicing? = nil) throws
+        -> (QuizViewModel, ProgressService, ChildProfile) {
         let (context, child) = try makeContext()
         let progress = ProgressService(context: context)
         let quiz = QuizViewModel(child: child,
                                  domain: LetterQuizDomain(progressService: progress),
-                                 speechService: SilentSpeech(),
+                                 speechService: speech ?? SilentSpeech(),
                                  rewardService: RewardService(context: context),
                                  haptics: HapticsService(),
                                  minimumFeedbackTime: .zero)
@@ -110,6 +113,26 @@ struct LetterQuizTests {
         try await Self.waitForInput(quiz)
 
         #expect(quiz.options.firstIndex(where: isAnswer) != spotBeforeReveal)
+    }
+
+    // MARK: - Replay
+
+    @Test("Tapping to hear the question again does nothing while it's still being spoken")
+    func replayWaitsForPromptToFinish() async throws {
+        let speech = HeldSpeech()
+        let (quiz, _, _) = try Self.makeQuiz(speech: speech)
+        try await waitUntil { speech.lines.count == 1 }
+        #expect(quiz.isPromptPlaying)
+
+        quiz.repeatPrompt()
+        quiz.repeatPrompt()
+        await Task.yield()
+        #expect(speech.lines.count == 1, "Replays mid-question must not restart it")
+
+        speech.finishAll()
+        try await waitUntil { !quiz.isPromptPlaying }
+        quiz.repeatPrompt()
+        try await waitUntil { speech.lines.count == 2 }
     }
 
     // MARK: - Difficulty
@@ -193,6 +216,45 @@ struct LetterQuizTests {
                 #expect(picture.word.uppercased().hasPrefix(letter.id), "\(picture.word) for \(letter.id)")
             }
         }
+    }
+}
+
+/// Polls `condition` on the main actor until it holds, for state that settles
+/// a task hop or two later.
+@MainActor
+func waitUntil(_ condition: () -> Bool) async throws {
+    let deadline = ContinuousClock.now + .seconds(3)
+    while !condition() {
+        guard ContinuousClock.now < deadline else {
+            Issue.record("Condition never became true")
+            return
+        }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+}
+
+/// Keeps every `speakAndWait` line "playing" until `finishAll()`, and records
+/// what was said — for checking what happens mid-line.
+@MainActor
+final class HeldSpeech: SpeechServicing {
+    private(set) var lines: [[String]] = []
+    private var playing: [CheckedContinuation<Void, Never>] = []
+
+    func speak(_ text: String) { lines.append([text]) }
+
+    func speakAndWait(_ sentences: [String]) async {
+        lines.append(sentences)
+        await withCheckedContinuation { playing.append($0) }
+    }
+
+    func teachLetter(_ letter: Letter) async {}
+    func teachNumber(_ number: NumberItem) async {}
+    func stop() {}
+
+    func finishAll() {
+        let finished = playing
+        playing = []
+        finished.forEach { $0.resume() }
     }
 }
 

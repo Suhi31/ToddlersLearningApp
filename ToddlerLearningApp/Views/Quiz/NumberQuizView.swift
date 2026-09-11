@@ -78,5 +78,16 @@ struct NumberQuizView: View {
         .background(AppColors.card)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
         .softShadow()
+        .overlay(alignment: .topTrailing) {
+            SpeakerBadge()
+                .padding(AppSpacing.tight)
+        }
+        // Tapping the pictures hears the question again, like the other
+        // games' pictures. A tap action rather than a Button so VoiceOver can
+        // still step through — and count — the objects one by one; a Button
+        // would fold them into a single label.
+        .contentShape(Rectangle())
+        .onTapGesture { viewModel.repeatPrompt() }
+        .accessibilityAction(named: "Hear the question again") { viewModel.repeatPrompt() }
     }
 }

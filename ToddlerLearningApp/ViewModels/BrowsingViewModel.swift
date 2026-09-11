@@ -111,9 +111,20 @@ final class BrowsingViewModel<Item: Equatable> {
         onSafeStoppingPoint?()
     }
 
+    /// Whether the current item's teach sequence is still being spoken.
+    /// "Hear it again" while it is does nothing — restarting the same sequence
+    /// from the top on every tap only makes it stutter. Paging to another item
+    /// still interrupts it, as it should.
+    private(set) var isTeaching = false
+
+    /// Numbers each teach sequence, so an older one finishing late — cut off
+    /// by paging on — can't clear `isTeaching` while the newer one plays.
+    private var teachingPlayback = 0
+
     /// Replays the same teach sequence — this is a learning screen, not a quiz,
     /// so there is no "your turn" prompt here, only repetition.
     func repeatSound() {
+        guard !isTeaching else { return }
         haptics.tap()
         announceCurrent(recordExposure: false)
     }
@@ -127,8 +138,13 @@ final class BrowsingViewModel<Item: Equatable> {
 
         speechTask?.cancel()
         speechService.stop()
-        speechTask = Task { [teacher, current] in
+        teachingPlayback += 1
+        let playback = teachingPlayback
+        isTeaching = true
+        speechTask = Task { [weak self, teacher, current] in
             await teacher(current)
+            guard let self, self.teachingPlayback == playback else { return }
+            self.isTeaching = false
         }
     }
 }

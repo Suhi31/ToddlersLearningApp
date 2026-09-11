@@ -89,6 +89,11 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     /// `.incorrect`.
     private(set) var isAnswerRevealed = false
 
+    /// Whether the question is being spoken right now — as it appears, or
+    /// replayed. A replay tap while it is does nothing: restarting the same
+    /// line from the top on every tap only makes it stutter.
+    private(set) var isPromptPlaying = false
+
     /// Fired after each answered question — a natural break where the daily
     /// allowance may end the session (spec F5). The view wires this to the
     /// coordinator; the ViewModel stays navigation-agnostic.
@@ -108,6 +113,11 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     /// The option order for a retry after the answer was revealed — see
     /// `advance(afterCorrectAnswer:)`. `nil` means the question's own order.
     private var retryOptions: [Domain.Selection]?
+
+    /// Numbers each prompt playback, so an older one finishing late — cut off
+    /// by the newer one — can't clear `isPromptPlaying` while that newer one
+    /// is still speaking.
+    private var promptPlayback = 0
 
     /// How long feedback stays on screen at the least — all that's left when
     /// there's no spoken line to wait for, e.g. with sound switched off.
@@ -217,11 +227,28 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
         domain.answer(for: selection)
     }
 
+    /// The picture's tap and "Say again". Not while feedback is playing: that
+    /// line is what the child needs to hear, and cutting it short would also
+    /// end the feedback early. Not while the question is still being spoken
+    /// either — see `isPromptPlaying`.
     func repeatPrompt() {
-        // Not while feedback is playing: that line is what the child needs to
-        // hear, and cutting it short would also end the feedback early.
-        guard isAcceptingInput, let question else { return }
-        speechService.speak(domain.promptSpeech(for: question))
+        guard isAcceptingInput, !isPromptPlaying, let question else { return }
+        playPrompt(question)
+    }
+
+    private func playPrompt(_ question: Domain.Question) {
+        promptPlayback += 1
+        let playback = promptPlayback
+        isPromptPlaying = true
+        let line = domain.promptSpeech(for: question)
+
+        Task { [weak self, speechService] in
+            // Returns when the line finishes or something newer cuts it off —
+            // an answer's feedback, say — either way it's no longer playing.
+            await speechService.speakAndWait([line])
+            guard let self, self.promptPlayback == playback else { return }
+            self.isPromptPlaying = false
+        }
     }
 
     /// Starts a fresh round from zero — the "Play again" action on the
@@ -280,7 +307,7 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
         question = domain.nextQuestion(for: child, excluding: previous)
 
         if let question {
-            speechService.speak(domain.promptSpeech(for: question))
+            playPrompt(question)
         }
     }
 }
@@ -337,9 +364,13 @@ struct LetterQuizDomain: QuizDomain {
     ///
     /// Every sentence that ends on a lone letter is its own entry, so it's
     /// spoken with a gap after it — see `SpeechServicing.speakAndWait`.
+    ///
+    /// Letters are always "the letter A", never a bare "A" mid-sentence: the
+    /// voice reads a lone A as the word "a" ("uh"), and E comes out just as
+    /// unclear.
     func incorrectSpeech(for question: QuizQuestion, picked: Letter, misses: Int) -> [String] {
-        let target = question.answer.uppercase
-        let tapped = picked.uppercase
+        let target = "the letter \(question.answer.uppercase)"
+        let tapped = "the letter \(picked.uppercase)"
 
         guard misses >= 2 else {
             let phrasings = [
@@ -351,7 +382,7 @@ struct LetterQuizDomain: QuizDomain {
             return phrasings.randomElement() ?? phrasings[0]
         }
 
-        return ["That's \(tapped).", "\(target) is for \(question.picture.word). Here it is!"]
+        return ["That's \(tapped).", "\(question.answer.uppercase) is for \(question.picture.word). Here it is!"]
     }
 
     func revealsAnswer(afterMisses misses: Int) -> Bool { misses >= 2 }

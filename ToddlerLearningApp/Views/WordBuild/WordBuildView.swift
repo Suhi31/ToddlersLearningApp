@@ -41,14 +41,15 @@ struct WordBuildView: View {
             }
             .padding(AppSpacing.screen)
 
-            StarBurstView(isActive: viewModel.isComplete)
+            // Only for a word that earned its star — see `missesAllowedForStar`.
+            StarBurstView(isActive: viewModel.didEarnStar)
 
             // Spec F27: a finish line rather than the activity running
             // forever. Covers the content above rather than replacing it,
             // same convention as `StarBurstView`.
             if viewModel.isRoundComplete {
                 RoundCompleteView(
-                    starsEarned: viewModel.wordsCompleted,
+                    starsEarned: viewModel.starsThisRound,
                     onPlayAgain: { viewModel.startNewRound() },
                     onDone: { coordinator.popToRoot() }
                 )
@@ -88,11 +89,23 @@ struct WordBuildView: View {
         }
     }
 
+    /// Tapping the picture hears the word and the question again — the small
+    /// speaker badge is there so it reads as something to tap.
     private var picture: some View {
-        Text(viewModel.promptEmoji)
-            .font(.system(size: 90))
-            .scaleEffect(viewModel.isComplete ? 1.15 : 1.0)
-            .animation(.spring(response: 0.4, dampingFraction: 0.5), value: viewModel.isComplete)
+        Button {
+            viewModel.repeatPrompt()
+        } label: {
+            Text(viewModel.promptEmoji)
+                .font(.system(size: 90))
+                .overlay(alignment: .bottomTrailing) {
+                    SpeakerBadge()
+                        .offset(x: 8, y: 4)
+                }
+        }
+        .buttonStyle(BouncyButtonStyle())
+        .scaleEffect(viewModel.isComplete ? 1.15 : 1.0)
+        .animation(.spring(response: 0.4, dampingFraction: 0.5), value: viewModel.isComplete)
+        .accessibilityLabel("Hear the word again")
     }
 
     private var slots: some View {
@@ -105,6 +118,14 @@ struct WordBuildView: View {
                     .frame(width: slotWidth, height: slotHeight)
                     .background(fill)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    // The slot being asked about, so the child knows which
+                    // letter the question means.
+                    .overlay {
+                        if index == viewModel.nextSlotIndex, !viewModel.isComplete {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppColors.primary, lineWidth: 3)
+                        }
+                    }
                     // An unfilled slot renders as an empty string, so without
                     // this VoiceOver reads the row as nothing at all and the
                     // puzzle's state is undiscoverable.
@@ -124,16 +145,33 @@ struct WordBuildView: View {
                 } label: {
                     Text(tile.letter)
                         .font(.system(size: tileSide * 0.53, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppColors.title)
+                        .foregroundStyle(tile.isRejected ? AppColors.subtitle : AppColors.title)
                         .frame(width: tileSide, height: tileSide)
-                        .background(AppColors.primary.opacity(tile.isUsed ? 0.08 : 0.25))
+                        .background(tileBackground(tile))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-                .disabled(tile.isUsed || viewModel.isComplete)
-                .opacity(tile.isUsed ? 0.3 : 1.0)
+                .disabled(tile.isUsed || tile.isRejected || viewModel.isComplete || viewModel.isLocked)
+                .opacity(tile.isUsed ? 0.3 : (tile.isRejected ? 0.5 : 1.0))
+                .keyframeAnimator(initialValue: CGFloat(0), trigger: tile.shakes) { content, offset in
+                    content.offset(x: offset)
+                } keyframes: { _ in
+                    KeyframeTrack(\.self) {
+                        LinearKeyframe(-10, duration: 0.06)
+                        LinearKeyframe(10, duration: 0.08)
+                        LinearKeyframe(-6, duration: 0.08)
+                        LinearKeyframe(6, duration: 0.08)
+                        LinearKeyframe(0, duration: 0.06)
+                    }
+                }
                 .accessibilityLabel("Letter \(tile.letter)")
+                .accessibilityValue(tile.isRejected ? "Not this one" : "")
             }
         }
+    }
+
+    private func tileBackground(_ tile: WordBuildViewModel.ScrambledLetter) -> Color {
+        if tile.isRejected { return AppColors.disabledIcon.opacity(0.35) }
+        return AppColors.primary.opacity(tile.isUsed ? 0.08 : 0.25)
     }
 }

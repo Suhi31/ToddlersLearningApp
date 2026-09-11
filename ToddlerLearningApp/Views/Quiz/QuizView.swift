@@ -40,16 +40,35 @@ struct QuizView: View {
         let isFound = viewModel.feedback == .correct
 
         return VStack(spacing: AppSpacing.tight) {
-            Text(viewModel.picture?.emoji ?? "")
-                .font(.system(size: metrics.promptEmojiSize))
-                .scaleEffect(isFound ? 1.15 : 1.0)
+            // Tapping the picture hears the question again — same as Build the
+            // Word's picture, marked by the same badge.
+            Button {
+                viewModel.repeatPrompt()
+            } label: {
+                Text(viewModel.picture?.emoji ?? "")
+                    .font(.system(size: metrics.promptEmojiSize))
+                    .overlay(alignment: .bottomTrailing) {
+                        // An emoji's line box runs well below the glyph, so the
+                        // frame's corner is out in empty space at this size —
+                        // pulled in, in proportion, to sit on the picture.
+                        SpeakerBadge()
+                            .offset(x: -metrics.promptEmojiSize * 0.03,
+                                    y: -metrics.promptEmojiSize * 0.21)
+                            .opacity(isFound ? 0 : 1)
+                    }
+            }
+            .buttonStyle(BouncyButtonStyle())
+            .scaleEffect(isFound ? 1.15 : 1.0)
+            .accessibilityLabel("Hear the letter again")
 
             // Both lines are always laid out, one of them hidden, so the card
             // keeps its height when it flips instead of the tiles below jumping.
             ZStack {
-                listenRow
+                Text("Find the letter you hear")
+                    .font(AppFonts.body)
+                    .foregroundStyle(AppColors.subtitle)
+                    .lineLimit(2)
                     .opacity(isFound ? 0 : 1)
-                    .allowsHitTesting(!isFound)
                     .accessibilityHidden(isFound)
 
                 Text(viewModel.foundCaption)
@@ -70,26 +89,5 @@ struct QuizView: View {
         .background(AppColors.card)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
         .softShadow()
-    }
-
-    private var listenRow: some View {
-        HStack(spacing: AppSpacing.tight) {
-            Button {
-                viewModel.repeatPrompt()
-            } label: {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(AppFonts.heading.weight(.bold))
-                    .foregroundStyle(AppColors.primary)
-                    .frame(width: 48, height: 48)
-                    .background(AppColors.primary.opacity(0.15), in: Circle())
-            }
-            .buttonStyle(BouncyButtonStyle())
-            .accessibilityLabel("Hear the letter again")
-
-            Text("Find the letter you hear")
-                .font(AppFonts.body)
-                .foregroundStyle(AppColors.subtitle)
-                .lineLimit(2)
-        }
     }
 }

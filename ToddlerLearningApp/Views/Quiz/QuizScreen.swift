@@ -136,13 +136,25 @@ struct QuizScreen<Domain: QuizDomain, Prompt: View>: View {
 
                 Spacer()
 
+                // A filled pill rather than bare text: in Count & Find this is
+                // the only way to hear the question again — the objects
+                // themselves aren't tappable, since a child touches them while
+                // counting — so it has to read as a button at a glance. Marked
+                // with the same speaker as the pictures the other games let you
+                // tap.
                 Button {
                     viewModel.repeatPrompt()
                 } label: {
-                    Label("Say again", systemImage: "arrow.clockwise")
-                        .font(AppFonts.caption)
+                    Label("Say again", systemImage: "speaker.wave.2.fill")
+                        .font(AppFonts.caption.weight(.bold))
+                        .foregroundStyle(AppColors.ink(on: AppColors.primary))
+                        .padding(.horizontal, AppSpacing.element)
+                        .padding(.vertical, AppSpacing.tight)
+                        .background(AppColors.primary, in: Capsule())
+                        .softShadow()
                 }
-                .accessibilityLabel("Repeat the question")
+                .buttonStyle(BouncyButtonStyle())
+                .accessibilityLabel("Hear the question again")
             }
 
             HStack(spacing: AppSpacing.tight) {

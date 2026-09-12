@@ -25,15 +25,8 @@ struct WordBuildTests {
                                  words: [WordItem]? = nil,
                                  startingLevel: Int? = nil,
                                  savedLevel: Int = 0) throws -> (WordBuildViewModel, ChildProfile) {
-        let container = try ModelContainer(
-            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, TraceProgress.self, SessionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        // Not `container.mainContext` — see `ProgressServiceTests.makeService`.
-        let context = ModelContext(container)
-        let child = ChildProfile(name: "Test", age: 4, avatarEmoji: "🐰")
+        let (context, child) = try makeTestContext()
         child.wordBuildLevel = savedLevel
-        context.insert(child)
         let game = WordBuildViewModel(child: child,
                                       speechService: speech ?? SilentSpeech(),
                                       rewardService: RewardService(context: context),
@@ -51,18 +44,6 @@ struct WordBuildTests {
 
     private static func extras(in game: WordBuildViewModel) -> [WordBuildViewModel.ScrambledLetter] {
         game.scrambledLetters.filter { !dog.letters.contains($0.letter) }
-    }
-
-    /// The lock lifts on a short timer even with nothing spoken.
-    private static func waitForUnlock(_ game: WordBuildViewModel) async throws {
-        let deadline = ContinuousClock.now + .seconds(3)
-        while game.isLocked {
-            guard ContinuousClock.now < deadline else {
-                Issue.record("The tiles never unlocked")
-                return
-            }
-            try await Task.sleep(for: .milliseconds(20))
-        }
     }
 
     private static func spell(_ game: WordBuildViewModel) throws {
@@ -115,7 +96,7 @@ struct WordBuildTests {
         game.tapScrambled(try Self.tile("D", in: game))
         #expect(game.filledLetters[0] == nil)
 
-        try await Self.waitForUnlock(game)
+        try await waitUntil { !game.isLocked }
         game.tapScrambled(try Self.tile("D", in: game))
         #expect(game.filledLetters[0] == "D")
         #expect(game.nextSlotIndex == 1)
@@ -145,6 +126,7 @@ struct WordBuildTests {
         try await waitUntil { !game.isPromptPlaying }
         game.repeatPrompt()
         try await waitUntil { speech.lines.count == 2 }
+        speech.finishAll()
     }
 
     // MARK: - Stars
@@ -175,7 +157,7 @@ struct WordBuildTests {
             } else {
                 game.tapScrambled(try #require(Self.extras(in: game).first))
             }
-            try await Self.waitForUnlock(game)
+            try await waitUntil { !game.isLocked }
             #expect(game.revealedTileID == nil)
             game.tapScrambled(try Self.tile(letter, in: game))
         }
@@ -194,13 +176,13 @@ struct WordBuildTests {
         let extras = Self.extras(in: game)
 
         game.tapScrambled(extras[0])
-        try await Self.waitForUnlock(game)
+        try await waitUntil { !game.isLocked }
         #expect(game.revealedTileID == nil)
 
         game.tapScrambled(extras[1])
         let revealed = try #require(game.scrambledLetters.first { $0.id == game.revealedTileID })
         #expect(revealed.letter == "D")
-        try await Self.waitForUnlock(game)
+        try await waitUntil { !game.isLocked }
 
         game.tapScrambled(revealed)
         #expect(game.revealedTileID == nil)
@@ -279,13 +261,4 @@ struct WordBuildTests {
             #expect(words.filter { $0.letters.count == length }.count >= 12, "\(length)-letter words")
         }
     }
-}
-
-@MainActor
-private final class SilentSpeech: SpeechServicing {
-    func speak(_ text: String) {}
-    func speakAndWait(_ sentences: [String]) async {}
-    func teachLetter(_ letter: Letter) async {}
-    func teachNumber(_ number: NumberItem) async {}
-    func stop() {}
 }

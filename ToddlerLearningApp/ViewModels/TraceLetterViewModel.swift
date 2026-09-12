@@ -219,7 +219,7 @@ final class TraceLetterViewModel {
     /// hearing which letter is being traced is the only way in.
     func speakCurrentLetter() {
         guard let currentLetter else { return }
-        speechService.speak("Trace the letter \(currentLetter.uppercase)")
+        speechService.speak("Trace \(Spoken.letter(currentLetter.uppercase))")
     }
 
     /// Called by the view once it knows how much room it actually has. Every
@@ -445,7 +445,7 @@ final class TraceLetterViewModel {
         guard let currentLetter else { return }
         rebuildGeometry()
         clear()
-        speechService.speak("Trace the letter \(currentLetter.uppercase)")
+        speechService.speak("Trace \(Spoken.letter(currentLetter.uppercase))")
         playDemo()
     }
 
@@ -471,7 +471,8 @@ final class TraceLetterViewModel {
         rewardService.awardStars(1, to: child)
         haptics.success()
         if let currentLetter {
-            speechService.speak("Great tracing! That's \(currentLetter.uppercase).")
+            // Not a bare "That's A." — see `Spoken.letter`.
+            speechService.speak("Great tracing! That's \(Spoken.letter(currentLetter.uppercase)).")
             progressService.recordTrace(child: child, letterID: currentLetter.id, completed: true)
         }
 

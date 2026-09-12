@@ -95,14 +95,7 @@ struct TraceLetterTests {
 
     @Test("Back from A wraps to Z, and forward from Z wraps to A")
     func pagingWraps() throws {
-        let container = try ModelContainer(
-            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, TraceProgress.self, SessionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        // Not `container.mainContext` — see `ProgressServiceTests.makeService`.
-        let context = ModelContext(container)
-        let child = ChildProfile(name: "Test", age: 4, avatarEmoji: "🐰")
-        context.insert(child)
+        let (context, child) = try makeTestContext()
         let trace = TraceLetterViewModel(child: child,
                                          speechService: SilentSpeech(),
                                          rewardService: RewardService(context: context),
@@ -119,13 +112,4 @@ struct TraceLetterTests {
         trace.next()
         #expect(trace.currentLetter?.id == "A")
     }
-}
-
-@MainActor
-private final class SilentSpeech: SpeechServicing {
-    func speak(_ text: String) {}
-    func speakAndWait(_ sentences: [String]) async {}
-    func teachLetter(_ letter: Letter) async {}
-    func teachNumber(_ number: NumberItem) async {}
-    func stop() {}
 }

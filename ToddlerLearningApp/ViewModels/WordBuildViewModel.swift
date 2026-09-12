@@ -133,7 +133,7 @@ final class WordBuildViewModel {
     /// word's opening prompt, the question after each correct letter, or a
     /// replay. A picture tap while it is does nothing: restarting the same
     /// line from the top on every tap only makes it stutter.
-    private(set) var isPromptPlaying = false
+    var isPromptPlaying: Bool { promptPlayback.isPlaying }
 
     private(set) var missesThisWord = 0
 
@@ -172,8 +172,7 @@ final class WordBuildViewModel {
     private var pendingTask: Task<Void, Never>?
     private var lockTask: Task<Void, Never>?
 
-    /// Numbers each question playback — see `ask(_:)`.
-    private var promptPlayback = 0
+    private let promptPlayback = PlaybackTracker()
 
     init(child: ChildProfile,
          speechService: SpeechServicing,
@@ -181,7 +180,7 @@ final class WordBuildViewModel {
          progressService: ProgressService,
          haptics: HapticsService,
          wordsPerRound: Int = 5,
-         words: [WordItem] = WordBuildContent.words,
+         words: [WordItem]? = nil,
          startingLevel: Int? = nil,
          minimumLockTime: Duration = .seconds(1)) {
         self.child = child
@@ -190,12 +189,14 @@ final class WordBuildViewModel {
         self.progressService = progressService
         self.haptics = haptics
         self.wordsPerRound = wordsPerRound
-        self.words = words
+        // Optional rather than defaulting to `WordBuildContent.words`: a default
+        // argument is evaluated outside the main actor that list belongs to.
+        self.words = words ?? WordBuildContent.words
         self.minimumLockTime = minimumLockTime
         // The child's saved level unless a caller overrides it.
         let progression = WordBuildProgression(levelIndex: startingLevel ?? child.wordBuildLevel)
         self.progression = progression
-        self.currentWord = Self.pickWord(from: words, for: progression.level, excluding: nil)
+        self.currentWord = Self.pickWord(from: self.words, for: progression.level, excluding: nil)
         setUp(for: currentWord)
     }
 
@@ -285,8 +286,7 @@ final class WordBuildViewModel {
     /// instead. Deliberately never says "wrong" — a miss should redirect, not
     /// register as failure.
     ///
-    /// Always "the letter A", never a bare "A" mid-sentence: the voice reads a
-    /// lone A as the word "a" ("uh"), and E comes out just as unclear.
+    /// Letters are named with `Spoken.letter` — see why there.
     private func reject(at index: Int, expected: String) {
         let tapped = scrambledLetters[index].letter
         scrambledLetters[index].isRejected = true
@@ -295,13 +295,13 @@ final class WordBuildViewModel {
         missesOnSlot += 1
         haptics.gentleMiss()
 
-        var sentences = ["That's the letter \(tapped).", "We need the letter \(expected)!"]
+        var sentences = ["That's \(Spoken.letter(tapped)).", "We need \(Spoken.letter(expected))!"]
         if missesOnSlot >= Self.missesBeforeReveal,
            revealedTileID == nil,
            let answer = scrambledLetters.first(where: { $0.letter == expected && !$0.isUsed }) {
             revealedTileID = answer.id
             neededHelp = true
-            sentences = ["That's the letter \(tapped).", "Here's the letter \(expected)!"]
+            sentences = ["That's \(Spoken.letter(tapped)).", "Here's \(Spoken.letter(expected))!"]
         }
 
         isLocked = true
@@ -328,7 +328,10 @@ final class WordBuildViewModel {
         progressService.recordWordBuildLevel(progression.levelIndex, for: child)
         haptics.success()
 
-        let sentences = ["\(lastLetter).", "\(spokenWord)!", didEarnStar ? "Great job!" : "You did it!"]
+        // Varied praise for a clean word, same as the quizzes; a word that
+        // wasn't clean still finishes warmly, just without the celebration.
+        let closing = didEarnStar ? Praise.opener(childName: child.name) : "You did it!"
+        let sentences = ["\(lastLetter).", "\(spokenWord)!", closing]
 
         wordsCompleted += 1
         guard wordsCompleted < wordsPerRound else {
@@ -413,19 +416,12 @@ final class WordBuildViewModel {
     }
 
     /// Like `say`, for a line that asks the question — tracked, so a replay
-    /// tap can tell it's still playing. Numbered, so an older line finishing
-    /// late (cut off by this one) can't clear `isPromptPlaying` for it.
+    /// tap can tell it's still playing. See `isPromptPlaying`.
     private func ask(_ sentences: [String]) {
-        promptPlayback += 1
-        let playback = promptPlayback
-        isPromptPlaying = true
-
-        Task { [weak self, speechService] in
-            // Returns when the line finishes or something newer cuts it off —
-            // a wrong tap's line, say — either way it's no longer playing.
+        // Returns when the line finishes or something newer cuts it off — a
+        // wrong tap's line, say — either way it's no longer playing.
+        promptPlayback.start { [speechService] in
             await speechService.speakAndWait(sentences)
-            guard let self, self.promptPlayback == playback else { return }
-            self.isPromptPlaying = false
         }
     }
 }

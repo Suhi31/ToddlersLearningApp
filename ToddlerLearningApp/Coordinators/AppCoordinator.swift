@@ -269,7 +269,6 @@ final class AppCoordinator: Coordinator {
                     RhymeDetailView(
                         viewModel: RhymeDetailViewModel(
                             rhyme: rhyme,
-                            speechService: dependencies.makeSpeechService(),
                             rhymeAudioService: dependencies.rhymeAudioService,
                             haptics: dependencies.haptics
                         ),

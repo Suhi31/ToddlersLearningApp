@@ -19,23 +19,11 @@ struct LetterQuizTests {
 
     // MARK: - Fixture
 
-    private static func makeContext(childAge: Int = 4) throws -> (ModelContext, ChildProfile) {
-        let container = try ModelContainer(
-            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, TraceProgress.self, SessionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        // Not `container.mainContext` — see `ProgressServiceTests.makeService`.
-        let context = ModelContext(container)
-        let child = ChildProfile(name: "Test", age: childAge, avatarEmoji: "🐰")
-        context.insert(child)
-        return (context, child)
-    }
-
     /// `speech` is optional rather than defaulting to `SilentSpeech()`: a
     /// default argument is evaluated outside the main actor that type needs.
     private static func makeQuiz(speech: SpeechServicing? = nil) throws
         -> (QuizViewModel, ProgressService, ChildProfile) {
-        let (context, child) = try makeContext()
+        let (context, child) = try makeTestContext()
         let progress = ProgressService(context: context)
         let quiz = QuizViewModel(child: child,
                                  domain: LetterQuizDomain(progressService: progress),
@@ -45,18 +33,6 @@ struct LetterQuizTests {
                                  minimumFeedbackTime: .zero)
         quiz.onAppear()
         return (quiz, progress, child)
-    }
-
-    /// Feedback ends on a short timer even with nothing spoken.
-    private static func waitForInput(_ quiz: QuizViewModel) async throws {
-        let deadline = ContinuousClock.now + .seconds(3)
-        while !quiz.isAcceptingInput {
-            guard ContinuousClock.now < deadline else {
-                Issue.record("The quiz never accepted input again")
-                return
-            }
-            try await Task.sleep(for: .milliseconds(20))
-        }
     }
 
     private static func wrongOption(_ quiz: QuizViewModel) throws -> Letter {
@@ -87,7 +63,7 @@ struct LetterQuizTests {
         let letterID = try #require(quiz.currentAnswer)
 
         quiz.select(try Self.wrongOption(quiz))
-        try await Self.waitForInput(quiz)
+        try await waitUntil { quiz.isAcceptingInput }
         quiz.select(try Self.rightOption(quiz))
 
         let record = progress.progress(for: child, letterID: letterID)
@@ -105,12 +81,12 @@ struct LetterQuizTests {
 
         quiz.select(try Self.wrongOption(quiz))
         #expect(!quiz.isAnswerRevealed)
-        try await Self.waitForInput(quiz)
+        try await waitUntil { quiz.isAcceptingInput }
 
         let spotBeforeReveal = quiz.options.firstIndex(where: isAnswer)
         quiz.select(try Self.wrongOption(quiz))
         #expect(quiz.isAnswerRevealed)
-        try await Self.waitForInput(quiz)
+        try await waitUntil { quiz.isAcceptingInput }
 
         #expect(quiz.options.firstIndex(where: isAnswer) != spotBeforeReveal)
     }
@@ -133,13 +109,30 @@ struct LetterQuizTests {
         try await waitUntil { !quiz.isPromptPlaying }
         quiz.repeatPrompt()
         try await waitUntil { speech.lines.count == 2 }
+        speech.finishAll()
+    }
+
+    @Test("Only a first-try correct answer gets the star burst")
+    func burstOnlyForAStar() async throws {
+        let (first, _, _) = try Self.makeQuiz()
+        first.select(try Self.rightOption(first))
+        #expect(first.didEarnStar)
+
+        let (retry, _, _) = try Self.makeQuiz()
+        retry.select(try Self.wrongOption(retry))
+        #expect(!retry.didEarnStar)
+        try await waitUntil { retry.isAcceptingInput }
+
+        retry.select(try Self.rightOption(retry))
+        #expect(retry.feedback == .correct)
+        #expect(!retry.didEarnStar, "A correct retry earns no star, so no burst")
     }
 
     // MARK: - Difficulty
 
     @Test("A new letter gets three tiles, none shaped like it")
     func newLetterIsEasy() throws {
-        let (context, child) = try Self.makeContext()
+        let (context, child) = try makeTestContext()
         let service = ProgressService(context: context)
 
         for _ in 0..<30 {
@@ -153,7 +146,7 @@ struct LetterQuizTests {
 
     @Test("A mastered letter gets five tiles, including up to two look-alikes")
     func masteredLetterIsHarder() throws {
-        let (context, child) = try Self.makeContext()
+        let (context, child) = try makeTestContext()
         let service = ProgressService(context: context)
         for letter in AlphabetContent.letters {
             for _ in 0..<6 { service.record(child: child, letterID: letter.id, correct: true) }
@@ -185,7 +178,7 @@ struct LetterQuizTests {
     /// to end there, to get its own gap.
     @Test("No spoken sentence runs on past a lone letter")
     func sentencesBreakAfterLoneLetters() throws {
-        let (context, child) = try Self.makeContext()
+        let (context, child) = try makeTestContext()
         let domain = LetterQuizDomain(progressService: ProgressService(context: context))
         let runOn = try NSRegularExpression(pattern: #"(?<![\p{L}'’])[A-Z][.!?]\s+\S"#)
 
@@ -217,54 +210,4 @@ struct LetterQuizTests {
             }
         }
     }
-}
-
-/// Polls `condition` on the main actor until it holds, for state that settles
-/// a task hop or two later.
-@MainActor
-func waitUntil(_ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now + .seconds(3)
-    while !condition() {
-        guard ContinuousClock.now < deadline else {
-            Issue.record("Condition never became true")
-            return
-        }
-        try await Task.sleep(for: .milliseconds(20))
-    }
-}
-
-/// Keeps every `speakAndWait` line "playing" until `finishAll()`, and records
-/// what was said — for checking what happens mid-line.
-@MainActor
-final class HeldSpeech: SpeechServicing {
-    private(set) var lines: [[String]] = []
-    private var playing: [CheckedContinuation<Void, Never>] = []
-
-    func speak(_ text: String) { lines.append([text]) }
-
-    func speakAndWait(_ sentences: [String]) async {
-        lines.append(sentences)
-        await withCheckedContinuation { playing.append($0) }
-    }
-
-    func teachLetter(_ letter: Letter) async {}
-    func teachNumber(_ number: NumberItem) async {}
-    func stop() {}
-
-    func finishAll() {
-        let finished = playing
-        playing = []
-        finished.forEach { $0.resume() }
-    }
-}
-
-/// Returns straight away from everything, so the quiz's own timing is all
-/// that's left to wait on.
-@MainActor
-private final class SilentSpeech: SpeechServicing {
-    func speak(_ text: String) {}
-    func speakAndWait(_ sentences: [String]) async {}
-    func teachLetter(_ letter: Letter) async {}
-    func teachNumber(_ number: NumberItem) async {}
-    func stop() {}
 }

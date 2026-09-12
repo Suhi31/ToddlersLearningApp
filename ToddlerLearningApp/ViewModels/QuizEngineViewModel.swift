@@ -70,6 +70,11 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     /// without earning a star.
     private(set) var starsThisRound: Int = 0
 
+    /// Whether the answer just given earned a star — a first-try correct one.
+    /// Drives the star burst, which a correct retry doesn't get: no star, so
+    /// no burst, same as Build the Word.
+    private(set) var didEarnStar = false
+
     /// Correct answers so far in the current round. A miss keeps the same
     /// question on screen and doesn't advance this — see `select(_:)`.
     private(set) var questionsAnswered: Int = 0
@@ -92,7 +97,7 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     /// Whether the question is being spoken right now — as it appears, or
     /// replayed. A replay tap while it is does nothing: restarting the same
     /// line from the top on every tap only makes it stutter.
-    private(set) var isPromptPlaying = false
+    var isPromptPlaying: Bool { promptPlayback.isPlaying }
 
     /// Fired after each answered question — a natural break where the daily
     /// allowance may end the session (spec F5). The view wires this to the
@@ -114,10 +119,7 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     /// `advance(afterCorrectAnswer:)`. `nil` means the question's own order.
     private var retryOptions: [Domain.Selection]?
 
-    /// Numbers each prompt playback, so an older one finishing late — cut off
-    /// by the newer one — can't clear `isPromptPlaying` while that newer one
-    /// is still speaking.
-    private var promptPlayback = 0
+    private let promptPlayback = PlaybackTracker()
 
     /// How long feedback stays on screen at the least — all that's left when
     /// there's no spoken line to wait for, e.g. with sound switched off.
@@ -183,6 +185,7 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
             feedback = .correct
             // Same reasoning: the star is for knowing it, not for the retry.
             if isFirstTry {
+                didEarnStar = true
                 starsThisSession += 1
                 starsThisRound += 1
                 rewardService.awardStars(1, to: child)
@@ -237,17 +240,11 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     }
 
     private func playPrompt(_ question: Domain.Question) {
-        promptPlayback += 1
-        let playback = promptPlayback
-        isPromptPlaying = true
         let line = domain.promptSpeech(for: question)
-
-        Task { [weak self, speechService] in
-            // Returns when the line finishes or something newer cuts it off —
-            // an answer's feedback, say — either way it's no longer playing.
+        // Returns when the line finishes or something newer cuts it off — an
+        // answer's feedback, say — either way it's no longer playing.
+        promptPlayback.start { [speechService] in
             await speechService.speakAndWait([line])
-            guard let self, self.promptPlayback == playback else { return }
-            self.isPromptPlaying = false
         }
     }
 
@@ -265,6 +262,7 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     private func advance(afterCorrectAnswer wasCorrect: Bool) {
         let wasRevealed = isAnswerRevealed
         feedback = .none
+        didEarnStar = false
         isAnswerRevealed = false
         isAcceptingInput = true
 
@@ -338,19 +336,19 @@ struct LetterQuizDomain: QuizDomain {
     }
 
     func promptSpeech(for question: QuizQuestion) -> String {
-        let letter = question.answer.uppercase
+        let letter = Spoken.letter(question.answer.uppercase)
         let phrasings = [
-            "Can you find the letter \(letter)?",
-            "Where's the letter \(letter)?",
-            "Find the letter \(letter)!",
-            "Can you tap the letter \(letter)?",
-            "Can you spot the letter \(letter)?"
+            "Can you find \(letter)?",
+            "Where's \(letter)?",
+            "Find \(letter)!",
+            "Can you tap \(letter)?",
+            "Can you spot \(letter)?"
         ]
         return phrasings.randomElement() ?? phrasings[0]
     }
 
     func correctSpeech(for question: QuizQuestion, isFirstTry: Bool, childName: String) -> [String] {
-        let opener = isFirstTry ? QuizPraise.opener(childName: childName) : QuizPraise.retryOpener()
+        let opener = isFirstTry ? Praise.opener(childName: childName) : Praise.retryOpener()
         var sentences = teachingLine(for: question)
         sentences[0] = "\(opener) \(sentences[0])"
         return sentences
@@ -365,12 +363,10 @@ struct LetterQuizDomain: QuizDomain {
     /// Every sentence that ends on a lone letter is its own entry, so it's
     /// spoken with a gap after it — see `SpeechServicing.speakAndWait`.
     ///
-    /// Letters are always "the letter A", never a bare "A" mid-sentence: the
-    /// voice reads a lone A as the word "a" ("uh"), and E comes out just as
-    /// unclear.
+    /// Letters are named with `Spoken.letter` — see why there.
     func incorrectSpeech(for question: QuizQuestion, picked: Letter, misses: Int) -> [String] {
-        let target = "the letter \(question.answer.uppercase)"
-        let tapped = "the letter \(picked.uppercase)"
+        let target = Spoken.letter(question.answer.uppercase)
+        let tapped = Spoken.letter(picked.uppercase)
 
         guard misses >= 2 else {
             let phrasings = [
@@ -395,33 +391,11 @@ struct LetterQuizDomain: QuizDomain {
         let letter = question.answer.uppercase
         let word = question.picture.word
         let lines = [
-            // "the letter A", not a bare "A." — see `incorrectSpeech`.
-            ["That's the letter \(letter).", "\(letter) is for \(word)."],
+            // Not a bare "That's A." — see `Spoken.letter`.
+            ["That's \(Spoken.letter(letter)).", "\(letter) is for \(word)."],
             ["\(letter) is for \(word)!"]
         ]
         return lines.randomElement() ?? lines[0]
-    }
-}
-
-/// Openers for the correct-answer lines, shared by both quizzes. Several
-/// rather than one fixed "Great job" — the exact same reply every time is what
-/// reads as robotic.
-private enum QuizPraise {
-
-    static func opener(childName: String) -> String {
-        let exclamations = [
-            "Yes", "Great job", "Well done", "You got it", "Brilliant", "Woohoo",
-            "Fantastic", "Amazing", "Super job", "Way to go", "You nailed it", "High five"
-        ]
-        let exclamation = exclamations.randomElement() ?? "Yes"
-        // The name on every single line gets repetitive fast; about half is plenty.
-        guard !childName.isEmpty, Bool.random() else { return exclamation + "!" }
-        return "\(exclamation), \(childName)!"
-    }
-
-    /// For a correct retry after a miss: warm, but not the full celebration.
-    static func retryOpener() -> String {
-        ["That's it!", "There it is!", "You found it!"].randomElement() ?? "That's it!"
     }
 }
 
@@ -487,7 +461,7 @@ struct NumberQuizDomain: QuizDomain {
     }
 
     func correctSpeech(for question: NumberQuizQuestion, isFirstTry: Bool, childName: String) -> [String] {
-        let opener = isFirstTry ? QuizPraise.opener(childName: childName) : QuizPraise.retryOpener()
+        let opener = isFirstTry ? Praise.opener(childName: childName) : Praise.retryOpener()
         let things = question.object.name(forCount: question.answer.id)
         return ["\(opener) \(question.answer.name) \(things)!"]
     }

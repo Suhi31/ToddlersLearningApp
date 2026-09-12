@@ -15,19 +15,12 @@ import Testing
 struct HomeViewModelTests {
 
     private static func makeHome(starsToday: Int) throws -> HomeViewModel {
-        let container = try ModelContainer(
-            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, TraceProgress.self, SessionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        // Not `container.mainContext` — see `ProgressServiceTests.makeService`.
-        let context = ModelContext(container)
-        let child = ChildProfile(name: "Test", age: 4, avatarEmoji: "🐰")
+        let (context, child) = try makeTestContext()
         child.starsEarnedToday = starsToday
         child.starsEarnedTodayDate = .now
-        context.insert(child)
         return HomeViewModel(child: child,
                              sessionTimer: SessionTimerService(context: context),
-                             speechService: HeldSpeech(),
+                             speechService: SilentSpeech(),
                              haptics: HapticsService())
     }
 

@@ -2,11 +2,10 @@
 //  RhymeDetailViewModel.swift
 //  ToddlerLearningApp
 //
-//  The player for a single rhyme. Owns both SpeechServicing and
-//  RhymeAudioPlaying, which is where the two playback paths get coordinated —
-//  RhymeAudioService and SpeechService don't know about each other, since a
-//  ViewModel that already holds both is the natural place for that, not a
-//  dependency between two otherwise-unrelated leaf services.
+//  The player for a single rhyme, over RhymeAudioPlaying. It used to hold
+//  SpeechServicing as well, only to silence speech before a rhyme started —
+//  unnecessary now that each screen's speech is stopped by that screen when
+//  it leaves (see ScopedSpeechService), and this screen never speaks itself.
 //
 //  `RhymeAudioService` is `@Observable`, so its `isPlaying`/`progress` drive
 //  SwiftUI directly and this simply reads through to them. It used to copy
@@ -30,16 +29,13 @@ final class RhymeDetailViewModel {
     /// QuizEngineViewModel. The view wires this to the coordinator.
     var onSafeStoppingPoint: (() -> Void)?
 
-    private let speechService: SpeechServicing
     private let rhymeAudioService: RhymeAudioPlaying
     private let haptics: HapticsService
 
     init(rhyme: Rhyme,
-         speechService: SpeechServicing,
          rhymeAudioService: RhymeAudioPlaying,
          haptics: HapticsService) {
         self.rhyme = rhyme
-        self.speechService = speechService
         self.rhymeAudioService = rhymeAudioService
         self.haptics = haptics
     }
@@ -73,7 +69,6 @@ final class RhymeDetailViewModel {
         } else if rhymeAudioService.progress > 0 {
             rhymeAudioService.resume()
         } else {
-            speechService.stop()
             rhymeAudioService.play(rhyme)
         }
     }

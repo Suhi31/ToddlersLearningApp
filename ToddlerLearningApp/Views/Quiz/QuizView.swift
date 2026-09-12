@@ -47,15 +47,7 @@ struct QuizView: View {
             } label: {
                 Text(viewModel.picture?.emoji ?? "")
                     .font(.system(size: metrics.promptEmojiSize))
-                    .overlay(alignment: .bottomTrailing) {
-                        // An emoji's line box runs well below the glyph, so the
-                        // frame's corner is out in empty space at this size —
-                        // pulled in, in proportion, to sit on the picture.
-                        SpeakerBadge()
-                            .offset(x: -metrics.promptEmojiSize * 0.03,
-                                    y: -metrics.promptEmojiSize * 0.21)
-                            .opacity(isFound ? 0 : 1)
-                    }
+                    .speakerBadge(emojiSize: metrics.promptEmojiSize, isHidden: isFound)
             }
             .buttonStyle(BouncyButtonStyle())
             .scaleEffect(isFound ? 1.15 : 1.0)

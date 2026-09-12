@@ -18,6 +18,8 @@ struct WordBuildView: View {
     private var slotWidth: CGFloat { horizontalSizeClass == .regular ? 88 : 56 }
     private var slotHeight: CGFloat { horizontalSizeClass == .regular ? 100 : 64 }
 
+    private static let pictureSize: CGFloat = 90
+
     private var letterColumns: [GridItem] {
         [GridItem(.adaptive(minimum: tileSide), spacing: 12)]
     }
@@ -96,11 +98,8 @@ struct WordBuildView: View {
             viewModel.repeatPrompt()
         } label: {
             Text(viewModel.promptEmoji)
-                .font(.system(size: 90))
-                .overlay(alignment: .bottomTrailing) {
-                    SpeakerBadge()
-                        .offset(x: 8, y: 4)
-                }
+                .font(.system(size: Self.pictureSize))
+                .speakerBadge(emojiSize: Self.pictureSize)
         }
         .buttonStyle(BouncyButtonStyle())
         .scaleEffect(viewModel.isComplete ? 1.15 : 1.0)

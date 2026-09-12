@@ -100,7 +100,9 @@ struct QuizScreen<Domain: QuizDomain, Prompt: View>: View {
                 }
             }
 
-            StarBurstView(isActive: viewModel.feedback == .correct)
+            // Only for an answer that earned its star — a correct retry after a
+            // miss doesn't, so it gets no burst either.
+            StarBurstView(isActive: viewModel.didEarnStar)
 
             // Spec F27: a finish line rather than the quiz running forever.
             // Covers the content above rather than replacing it, same

@@ -15,10 +15,10 @@
 //  silence. This is a placeholder, not a real "sing along" — swap it out the
 //  moment a bundled clip exists for a given rhyme.
 //
-//  This service only knows about audio playback. Silencing any in-flight
-//  SpeechService utterance before a rhyme starts is RhymeDetailViewModel's job
-//  — it already holds both services, so that coordination belongs there rather
-//  than as a dependency between two otherwise-unrelated leaf services.
+//  This service only knows about audio playback, and needn't silence
+//  SpeechService before a rhyme starts: each screen's speech is stopped by
+//  that screen when it leaves (see ScopedSpeechService), and the rhyme screen
+//  itself never speaks.
 //
 //  `@Observable` so `isPlaying`/`progress` drive SwiftUI directly. Before, the
 //  detail view model polled these five times a second for the whole time the
@@ -66,6 +66,12 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
     @ObservationIgnored private var synthesizedLines: [String] = []
     @ObservationIgnored private var currentLineIndex = 0
     @ObservationIgnored private var isSynthesizing = false
+
+    /// The line being spoken now. Delegate callbacks for any other utterance
+    /// are ignored: iOS reports a *stopped* line as finished too, so without
+    /// this a stop-then-play in quick succession (play, pause, play before the
+    /// first word) delivers a stale finish that skips the new first line.
+    @ObservationIgnored private var currentUtterance: AVSpeechUtterance?
 
     override init() {
         super.init()
@@ -123,6 +129,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
             synthesizer.stopSpeaking(at: .immediate)
         }
         isSynthesizing = false
+        currentUtterance = nil
         synthesizedLines = []
         currentLineIndex = 0
         player?.stop()
@@ -155,7 +162,20 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
         let utterance = AVSpeechUtterance(string: synthesizedLines[currentLineIndex])
         utterance.rate = synthesisRate
         utterance.pitchMultiplier = 1.15
+        currentUtterance = utterance
         synthesizer.speak(utterance)
+    }
+
+    /// A line was reported finished. Only the line being spoken now counts —
+    /// see `currentUtterance`. Internal so tests can deliver a stale finish.
+    func handleFinish(utteranceID: ObjectIdentifier) {
+        guard isCurrent(utteranceID) else { return }
+        advanceToNextLine()
+    }
+
+    private func isCurrent(_ utteranceID: ObjectIdentifier) -> Bool {
+        guard let currentUtterance else { return false }
+        return ObjectIdentifier(currentUtterance) == utteranceID
     }
 
     private func advanceToNextLine() {
@@ -178,8 +198,8 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
         onFinished?()
     }
 
-    private func updateSynthesisProgress(range: NSRange, in text: String) {
-        guard isSynthesizing, !synthesizedLines.isEmpty else { return }
+    private func updateSynthesisProgress(range: NSRange, in text: String, utteranceID: ObjectIdentifier) {
+        guard isSynthesizing, isCurrent(utteranceID), !synthesizedLines.isEmpty else { return }
         let length = (text as NSString).length
         guard length > 0 else { return }
         let withinLine = Double(range.location) / Double(length)
@@ -195,7 +215,11 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
     private func startProgressTimer() {
         stopProgressTimer()
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.updateProgress() }
+            // A plain constant for the task to capture: reading the closure's
+            // own `weak self` var from inside the task is a data race in
+            // Swift 6's eyes.
+            guard let self else { return }
+            Task { @MainActor in self.updateProgress() }
         }
     }
 
@@ -220,19 +244,24 @@ extension RhymeAudioService: AVAudioPlayerDelegate {
     }
 }
 
+/// Only Sendable values cross to the main actor — the utterance's identity and
+/// text, never the (non-Sendable) utterance itself.
 extension RhymeAudioService: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                                         willSpeakRangeOfSpeechString characterRange: NSRange,
                                         utterance: AVSpeechUtterance) {
+        let utteranceID = ObjectIdentifier(utterance)
+        let text = utterance.speechString
         Task { @MainActor [weak self] in
-            self?.updateSynthesisProgress(range: characterRange, in: utterance.speechString)
+            self?.updateSynthesisProgress(range: characterRange, in: text, utteranceID: utteranceID)
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                                         didFinish utterance: AVSpeechUtterance) {
+        let utteranceID = ObjectIdentifier(utterance)
         Task { @MainActor [weak self] in
-            self?.advanceToNextLine()
+            self?.handleFinish(utteranceID: utteranceID)
         }
     }
 }

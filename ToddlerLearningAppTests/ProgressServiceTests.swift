@@ -20,23 +20,9 @@ struct ProgressServiceTests {
 
     // MARK: - Fixture
 
-    /// A fresh in-memory stack per test, so no test can observe another's writes.
+    /// A fresh in-memory stack per test — see `makeTestContext`.
     private static func makeService(childAge: Int = 4) throws -> (ProgressService, ChildProfile) {
-        let container = try ModelContainer(
-            for: ChildProfile.self, LetterProgress.self, NumberProgress.self, TraceProgress.self, SessionRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        // A plain `ModelContext(container)`, not `container.mainContext`: the
-        // latter observes app-lifecycle notifications to autosave/reset itself,
-        // and the test host process backgrounds almost immediately since it
-        // never really presents UI — which was enough to trigger SwiftData's
-        // "This model instance was destroyed by calling ModelContext.reset"
-        // fatal error mid-test. The production code's own use of
-        // `container.mainContext` (AppDependencies) is unaffected; that runs
-        // inside a real, foregrounded app.
-        let context = ModelContext(container)
-        let child = ChildProfile(name: "Test", age: childAge, avatarEmoji: "🐰")
-        context.insert(child)
+        let (context, child) = try makeTestContext(childAge: childAge)
         return (ProgressService(context: context), child)
     }
 

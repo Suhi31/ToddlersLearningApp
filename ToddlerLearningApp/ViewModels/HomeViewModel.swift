@@ -103,23 +103,17 @@ final class HomeViewModel {
     /// the pill while it is does nothing — restarting the same sequence from
     /// the top on every tap only makes it stutter. The mascot's greeting still
     /// cuts in, since that's a different line.
-    private(set) var isTeachingLetterOfDay = false
+    var isTeachingLetterOfDay: Bool { letterOfDay.isPlaying }
 
-    /// Numbers each teach sequence — same role as `BrowsingViewModel`'s.
-    private var letterOfDayPlayback = 0
+    private let letterOfDay = PlaybackTracker()
 
     func tapLetterOfDay() {
         guard let letterOfTheDay, !isTeachingLetterOfDay else { return }
         haptics.tap()
         speechTask?.cancel()
         speechService.stop()
-        letterOfDayPlayback += 1
-        let playback = letterOfDayPlayback
-        isTeachingLetterOfDay = true
-        speechTask = Task { [weak self, speechService] in
+        speechTask = letterOfDay.start { [speechService] in
             await speechService.teachLetter(letterOfTheDay)
-            guard let self, self.letterOfDayPlayback == playback else { return }
-            self.isTeachingLetterOfDay = false
         }
     }
 

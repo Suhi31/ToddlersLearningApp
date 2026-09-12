@@ -128,7 +128,11 @@ final class SessionTimerService {
     private func startTicker() {
         stopTicker()
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
+            // A plain constant for the task to capture: reading the closure's
+            // own `weak self` var from inside the task is a data race in
+            // Swift 6's eyes.
+            guard let self else { return }
+            Task { @MainActor in self.tick() }
         }
         // `.common` so the count keeps running while a scroll view is tracking.
         RunLoop.main.add(timer, forMode: .common)

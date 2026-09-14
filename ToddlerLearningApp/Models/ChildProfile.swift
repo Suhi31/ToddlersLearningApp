@@ -124,8 +124,12 @@ final class ChildProfile {
     // MARK: - Tracing
 
     /// Tracing-domain twin of `masteredCount` — ungated, for trophies.
+    ///
+    /// Letters only. `traceProgress` holds traced digits too, and the tracing
+    /// trophies are "5 letters" and "every letter": counting digits would hand
+    /// out Handwriting Hero with ten letters still untraced.
     var masteredTraceCount: Int {
-        traceProgress.count { $0.mastery == .mastered }
+        traceProgress.count { $0.mastery == .mastered && $0.letter != nil }
     }
 
     /// Tracing-domain twin of `masteredUnlockedCount`.

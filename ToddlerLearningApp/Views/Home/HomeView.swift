@@ -149,6 +149,12 @@ struct HomeView: View {
                          height: layout.activityTileHeight) {
                 coordinator.startActivity(.learnNumbers)
             }
+            // A crayon rather than Trace Letters' pencil, so the two tiles
+            // don't look the same to a child who can't read their titles.
+            ActivityTile(title: "Trace Numbers", emoji: "🖍️", color: AppColors.primary,
+                         height: layout.activityTileHeight) {
+                coordinator.startActivity(.traceNumbers)
+            }
             ActivityTile(title: "Count & Find", emoji: "🍎", color: AppColors.success,
                          height: layout.activityTileHeight) {
                 coordinator.startActivity(.numberQuiz)

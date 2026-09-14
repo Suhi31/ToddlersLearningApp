@@ -12,6 +12,19 @@ import SwiftData
 @MainActor
 final class AppDependencies {
 
+    /// Which voice the whole app speaks with. **This is the only thing to
+    /// change to A/B the two.**
+    ///
+    /// - `true`  — the bundled recordings in `Resources/Speech` (see
+    ///             docs/VOICE_CLIPS.md), falling back to synthesis for any
+    ///             line that has no clip.
+    /// - `false` — `AVSpeechSynthesizer` everywhere, ignoring every clip, as
+    ///             the app sounded before the recordings existed.
+    ///
+    /// Rebuild after changing it; nothing else needs touching, because both
+    /// paths are `SpeechServicing` and every screen talks to that protocol.
+    static let usesRecordedVoice = true
+
     let modelContext: ModelContext
     let progressService: ProgressService
     let childProfileService: ChildProfileService
@@ -26,10 +39,14 @@ final class AppDependencies {
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
-        // Wrapped so any bundled voice clips (see RecordedSpeechService's
-        // header comment for the naming convention) play automatically —
-        // with none bundled yet, this behaves identically to `SpeechService()`.
-        self.speechScopes = SpeechScopes(base: RecordedSpeechService(fallback: SpeechService()))
+        // See `usesRecordedVoice`. The synthesizer is built either way: with
+        // recordings on it is the fallback for lines that have no clip, and
+        // with them off it is the whole voice.
+        let synthesized = SpeechService()
+        let base: SpeechServicing = Self.usesRecordedVoice
+            ? RecordedSpeechService(fallback: synthesized)
+            : synthesized
+        self.speechScopes = SpeechScopes(base: base)
         self.progressService = ProgressService(context: modelContext)
         self.childProfileService = ChildProfileService(context: modelContext)
         self.rewardService = RewardService(context: modelContext)

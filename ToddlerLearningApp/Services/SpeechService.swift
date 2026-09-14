@@ -12,13 +12,24 @@ import Foundation
 
 @MainActor
 protocol SpeechServicing: AnyObject {
-    func speak(_ text: String)
+    /// A `SpokenLine` carries the words *and* the identity of the recording
+    /// that says them, so `RecordedSpeechService` can find a clip without
+    /// pattern-matching free-form text. A plain string literal still works at
+    /// a call site and means "synthesise this" — see `SpokenLine`.
+    func speak(_ line: SpokenLine)
     /// Teaches a letter as three separate beats — name, then sound, then the
     /// word — each a full second apart, for the Learn screen only.
     func teachLetter(_ letter: Letter) async
     /// Teaches a number as two beats — its name, then counting up to it — for
     /// the Learn Numbers screen only.
-    func teachNumber(_ number: NumberItem) async
+    ///
+    /// `onCount` reports which number is being said *as* it is said, so the
+    /// screen can light up the matching object, and `nil` once counting is
+    /// over. The synthesized path knows this because it speaks each number as
+    /// its own utterance; the recorded one plays a single "one, two, three"
+    /// clip and takes the moments from that clip's timing file. See
+    /// `SpeechServicing.teachNumber(_:)` for the plain form.
+    func teachNumber(_ number: NumberItem, onCount: @escaping @MainActor (Int?) -> Void) async
     /// Speaks each of `sentences` in turn with a short gap between them, and
     /// returns once the last has finished — or been cut off by a newer line —
     /// so a caller can move on when the child has actually heard it rather
@@ -26,8 +37,16 @@ protocol SpeechServicing: AnyObject {
     /// because punctuation alone doesn't reliably break after a lone letter:
     /// "That's I. A is for Ant" gets read as the initials "I. A." and runs
     /// straight on.
-    func speakAndWait(_ sentences: [String]) async
+    func speakAndWait(_ sentences: [SpokenLine]) async
     func stop()
+}
+
+extension SpeechServicing {
+
+    /// For callers with nothing to highlight — everywhere except Learn Numbers.
+    func teachNumber(_ number: NumberItem) async {
+        await teachNumber(number, onCount: { _ in })
+    }
 }
 
 /// Everything needed to render one spoken line, in a form that can be handed
@@ -70,6 +89,10 @@ final class SpeechService: SpeechServicing {
     /// Gap between the sentences of one `speakAndWait` line — enough to hear
     /// the break, well short of `teachingGap`'s deliberate teaching beat.
     private let sentenceGap: Double = 0.35
+
+    /// Between counted numbers. Short: this is one continuous count, not a
+    /// list of separate statements, and the objects light up in time with it.
+    private let countingGap: Double = 0.12
 
     /// A handful of letter sounds are continuant consonants or clusters whose
     /// plain-text spelling — "ff", "zz", "ks" — isn't a real English word, so
@@ -114,13 +137,15 @@ final class SpeechService: SpeechServicing {
     /// `onDisappear` — by which point the next screen is already talking.
     private var generation = 0
 
-    func speak(_ text: String) {
+    /// Synthesises the words; a line's clip key means nothing here — looking a
+    /// recording up is `RecordedSpeechService`'s job.
+    func speak(_ line: SpokenLine) {
         guard isSoundEnabled else { return }
         stop()
         // A small random wobble in rate/pitch, not the teaching beats below —
         // the exact same flat cadence on every single prompt/praise line is
         // as much of what reads as "robotic" as voice quality itself.
-        engine.speak(SpeechRequest(text: text, rate: playfulRate(), pitchMultiplier: playfulPitch()))
+        engine.speak(SpeechRequest(text: line.text, rate: playfulRate(), pitchMultiplier: playfulPitch()))
     }
 
     func teachLetter(_ letter: Letter) async {
@@ -146,7 +171,7 @@ final class SpeechService: SpeechServicing {
         )
     }
 
-    func teachNumber(_ number: NumberItem) async {
+    func teachNumber(_ number: NumberItem, onCount: @escaping @MainActor (Int?) -> Void) async {
         guard isSoundEnabled else { return }
         stop()
         let sequence = generation
@@ -157,13 +182,27 @@ final class SpeechService: SpeechServicing {
         // Counting up to the number is the actual pedagogy — recognising the
         // numeral alone doesn't teach quantity the way saying "one, two,
         // three" while looking at three objects does.
-        let count = (1...number.id)
-            .map { NumberContent.number(id: $0)?.name ?? "\($0)" }
-            .joined(separator: ", ")
-        await engine.speakAndWait(SpeechRequest(text: count, rate: rate))
+        //
+        // One utterance per number rather than a single "one, two, three":
+        // `speakAndWait` returns when each has actually been spoken, which is
+        // what lets `onCount` land on the right object at the right moment.
+        // The slight staccato is a fair trade — and arguably clearer for a
+        // child matching each word to a thing.
+        for value in 1...number.id {
+            if value > 1 {
+                guard await pause(seconds: countingGap, sequence: sequence) else {
+                    onCount(nil)
+                    return
+                }
+            }
+            onCount(value)
+            let name = NumberContent.number(id: value)?.name ?? "\(value)"
+            await engine.speakAndWait(SpeechRequest(text: "\(name),", rate: rate))
+        }
+        onCount(nil)
     }
 
-    func speakAndWait(_ sentences: [String]) async {
+    func speakAndWait(_ sentences: [SpokenLine]) async {
         guard isSoundEnabled else { return }
         stop()
         let sequence = generation
@@ -177,7 +216,7 @@ final class SpeechService: SpeechServicing {
             if index > 0 {
                 guard await pause(seconds: sentenceGap, sequence: sequence) else { return }
             }
-            await engine.speakAndWait(SpeechRequest(text: sentence, rate: lineRate, pitchMultiplier: linePitch))
+            await engine.speakAndWait(SpeechRequest(text: sentence.text, rate: lineRate, pitchMultiplier: linePitch))
         }
     }
 

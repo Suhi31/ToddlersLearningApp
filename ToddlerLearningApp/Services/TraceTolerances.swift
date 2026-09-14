@@ -76,4 +76,9 @@ struct TraceTolerances {
     /// Consecutive rejected touches before the direction demo replays. High
     /// enough that a moment's wobble doesn't trigger it.
     static let slipsBeforeReplay = 24
+
+    /// How long a child can go without progress — idle, stuck, or tracing the
+    /// wrong way — before the direction demo replays. Counted from the last
+    /// progress or the end of the last demo, whichever is later.
+    static let hintDelay: Duration = .seconds(3)
 }

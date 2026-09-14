@@ -133,10 +133,13 @@ enum TracePathSampler {
 
     private static var cache: [CacheKey: LetterTraceGeometry] = [:]
 
+    /// `letterID` is a `TraceItem.id` — a letter ("A") or a digit ("3"). The
+    /// two tables' keys can't collide, so one lookup serves both.
     static func geometry(for letterID: String, canvasSize: CGFloat) -> LetterTraceGeometry? {
         let key = CacheKey(letterID: letterID, canvasSize: canvasSize)
         if let cached = cache[key] { return cached }
-        guard let path = LetterTracePathContent.paths[letterID] else { return nil }
+        guard let path = LetterTracePathContent.paths[letterID]
+                ?? NumberTracePathContent.paths[letterID] else { return nil }
 
         let strokes = path.strokes.map { geometry(for: $0, canvasSize: canvasSize) }
         let built = LetterTraceGeometry(strokes: strokes, guidePaths: strokes.map(\.guidePath))

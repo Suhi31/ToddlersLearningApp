@@ -87,16 +87,10 @@ final class HomeViewModel {
         // Cancels any in-flight `tapLetterOfDay` sequence so its remaining
         // beats can't resume and speak over this line — see `speechTask`.
         speechTask?.cancel()
-        let templates = [
-            "Hi %@! Ready to play?",
-            "Hello %@! Let's have some fun!",
-            "Hey %@! Ready for an adventure?",
-            "Hiya %@! What should we learn today?",
-            "Boo! Just kidding, %@ — let's play!"
-        ]
-        let name = child.name.isEmpty ? "there" : child.name
-        let phrase = String(format: templates.randomElement() ?? templates[0], name)
-        speechService.speak(phrase)
+        // Name-free, so the greeting is a recording like everything else the
+        // child hears. It used to be "Hi Mih!", which could only ever be
+        // synthesized — see `Greeting`.
+        speechService.speak(Greeting.random())
     }
 
     /// Whether the letter of the day is still being taught. Another tap on

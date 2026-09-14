@@ -51,10 +51,10 @@ func waitUntil(_ condition: () -> Bool) async throws {
 /// that's left to wait on.
 @MainActor
 final class SilentSpeech: SpeechServicing {
-    func speak(_ text: String) {}
-    func speakAndWait(_ sentences: [String]) async {}
+    func speak(_ line: SpokenLine) {}
+    func speakAndWait(_ sentences: [SpokenLine]) async {}
     func teachLetter(_ letter: Letter) async {}
-    func teachNumber(_ number: NumberItem) async {}
+    func teachNumber(_ number: NumberItem, onCount: @escaping @MainActor (Int?) -> Void) async {}
     func stop() {}
 }
 
@@ -62,18 +62,30 @@ final class SilentSpeech: SpeechServicing {
 /// what was said — for checking what happens mid-line.
 @MainActor
 final class HeldSpeech: SpeechServicing {
+    /// The words of each line spoken, in order. Text rather than whole
+    /// `SpokenLine`s: every existing assertion is about what was *said*, and
+    /// a clip key is an implementation detail of how it gets said.
     private(set) var lines: [[String]] = []
+
+    /// The clip keys alongside them, for asserting a line is recorded (or
+    /// deliberately isn't, as with anything containing the child's name).
+    private(set) var clips: [[String?]] = []
+
     private var playing: [CheckedContinuation<Void, Never>] = []
 
-    func speak(_ text: String) { lines.append([text]) }
+    func speak(_ line: SpokenLine) {
+        lines.append([line.text])
+        clips.append([line.clip])
+    }
 
-    func speakAndWait(_ sentences: [String]) async {
-        lines.append(sentences)
+    func speakAndWait(_ sentences: [SpokenLine]) async {
+        lines.append(sentences.map(\.text))
+        clips.append(sentences.map(\.clip))
         await withCheckedContinuation { playing.append($0) }
     }
 
     func teachLetter(_ letter: Letter) async {}
-    func teachNumber(_ number: NumberItem) async {}
+    func teachNumber(_ number: NumberItem, onCount: @escaping @MainActor (Int?) -> Void) async {}
     func stop() {}
 
     func finishAll() {

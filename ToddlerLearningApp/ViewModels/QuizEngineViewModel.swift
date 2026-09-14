@@ -37,17 +37,22 @@ protocol QuizDomain {
     func options(for question: Question) -> [Selection]
     func nextQuestion(for child: ChildProfile, excluding previous: Answer?) -> Question?
     func recordAnswer(child: ChildProfile, question: Question, correct: Bool)
-    func promptSpeech(for question: Question) -> String
+    func promptSpeech(for question: Question) -> SpokenLine
 
     /// What to say after a correct tap, as sentences spoken with a short gap
     /// between them — see `SpeechServicing.speakAndWait`. `isFirstTry` is
     /// false once the child has missed this question — still worth praising,
     /// but it's a retry, not an answer they knew.
-    func correctSpeech(for question: Question, isFirstTry: Bool, childName: String) -> [String]
+    ///
+    /// The praise opener is its own entry rather than being glued onto the
+    /// sentence after it: an opener containing the child's name can never be a
+    /// recording, and concatenating the two would drag the recordable half into
+    /// synthesis as well.
+    func correctSpeech(for question: Question, isFirstTry: Bool, childName: String) -> [SpokenLine]
 
     /// What to say after the `misses`-th wrong tap on one question, in the
     /// same form as `correctSpeech`.
-    func incorrectSpeech(for question: Question, picked: Selection, misses: Int) -> [String]
+    func incorrectSpeech(for question: Question, picked: Selection, misses: Int) -> [SpokenLine]
 
     /// Whether the right tile lights up after `misses` wrong taps on one question.
     func revealsAnswer(afterMisses misses: Int) -> Bool
@@ -180,7 +185,7 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
             domain.recordAnswer(child: child, question: question, correct: isCorrect)
         }
 
-        let sentences: [String]
+        let sentences: [SpokenLine]
         if isCorrect {
             feedback = .correct
             // Same reasoning: the star is for knowing it, not for the retry.
@@ -335,8 +340,9 @@ struct LetterQuizDomain: QuizDomain {
         progressService.record(child: child, letterID: question.answer.id, correct: correct)
     }
 
-    func promptSpeech(for question: QuizQuestion) -> String {
-        let letter = Spoken.letter(question.answer.uppercase)
+    func promptSpeech(for question: QuizQuestion) -> SpokenLine {
+        let id = question.answer.uppercase
+        let letter = Spoken.letter(id)
         let phrasings = [
             "Can you find \(letter)?",
             "Where's \(letter)?",
@@ -344,14 +350,13 @@ struct LetterQuizDomain: QuizDomain {
             "Can you tap \(letter)?",
             "Can you spot \(letter)?"
         ]
-        return phrasings.randomElement() ?? phrasings[0]
+        let variant = Int.random(in: 0..<phrasings.count)
+        return SpokenLine(clip: Clip.quizPrompt(id, variant: variant), text: phrasings[variant])
     }
 
-    func correctSpeech(for question: QuizQuestion, isFirstTry: Bool, childName: String) -> [String] {
+    func correctSpeech(for question: QuizQuestion, isFirstTry: Bool, childName: String) -> [SpokenLine] {
         let opener = isFirstTry ? Praise.opener(childName: childName) : Praise.retryOpener()
-        var sentences = teachingLine(for: question)
-        sentences[0] = "\(opener) \(sentences[0])"
-        return sentences
+        return [opener] + teachingLine(for: question)
     }
 
     /// First miss: names what they tapped and asks again, with nothing
@@ -364,21 +369,41 @@ struct LetterQuizDomain: QuizDomain {
     /// spoken with a gap after it — see `SpeechServicing.speakAndWait`.
     ///
     /// Letters are named with `Spoken.letter` — see why there.
-    func incorrectSpeech(for question: QuizQuestion, picked: Letter, misses: Int) -> [String] {
-        let target = Spoken.letter(question.answer.uppercase)
-        let tapped = Spoken.letter(picked.uppercase)
+    /// Each half is keyed separately, which is what keeps this recordable at
+    /// all: pairing every tapped letter with every target would be 26 × 26 ×
+    /// 4 clips, while two independent halves are 4 × 26 each.
+    func incorrectSpeech(for question: QuizQuestion, picked: Letter, misses: Int) -> [SpokenLine] {
+        let targetID = question.answer.uppercase
+        let tappedID = picked.uppercase
+        let target = Spoken.letter(targetID)
+        let tapped = Spoken.letter(tappedID)
 
         guard misses >= 2 else {
-            let phrasings = [
-                ["That's \(tapped)!", "Can you find \(target)?"],
-                ["Good try! That's \(tapped).", "Where's \(target)?"],
-                ["That one is \(tapped).", "Let's look for \(target)."],
-                ["Almost! That's \(tapped).", "Find \(target)!"]
+            let tappedPhrasings = [
+                "That's \(tapped)!",
+                "Good try! That's \(tapped).",
+                "That one is \(tapped).",
+                "Almost! That's \(tapped)."
             ]
-            return phrasings.randomElement() ?? phrasings[0]
+            let retryPhrasings = [
+                "Can you find \(target)?",
+                "Where's \(target)?",
+                "Let's look for \(target).",
+                "Find \(target)!"
+            ]
+            let variant = Int.random(in: 0..<tappedPhrasings.count)
+            return [
+                SpokenLine(clip: Clip.quizTapped(tappedID, variant: variant), text: tappedPhrasings[variant]),
+                SpokenLine(clip: Clip.quizRetry(targetID, variant: variant), text: retryPhrasings[variant])
+            ]
         }
 
-        return ["That's \(tapped).", "\(question.answer.uppercase) is for \(question.picture.word). Here it is!"]
+        let word = question.picture.word
+        return [
+            SpokenLine(clip: Clip.letterThats(tappedID), text: "That's \(tapped)."),
+            SpokenLine(clip: Clip.quizHereItIs(targetID, word: word),
+                       text: "\(targetID) is for \(word). Here it is!")
+        ]
     }
 
     func revealsAnswer(afterMisses misses: Int) -> Bool { misses >= 2 }
@@ -387,15 +412,19 @@ struct LetterQuizDomain: QuizDomain {
     /// phrasing Learn Letters teaches. ("W, like Whale" read less clearly.)
     /// Deliberately no letter *sound* ("B says buh"): the synthesized
     /// phonemes don't sound good enough yet to drop into a sentence.
-    private func teachingLine(for question: QuizQuestion) -> [String] {
+    private func teachingLine(for question: QuizQuestion) -> [SpokenLine] {
         let letter = question.answer.uppercase
         let word = question.picture.word
-        let lines = [
+
+        guard Bool.random() else {
+            return [SpokenLine(clip: Clip.quizIsForExclaimed(letter, word: word),
+                               text: "\(letter) is for \(word)!")]
+        }
+        return [
             // Not a bare "That's A." — see `Spoken.letter`.
-            ["That's \(Spoken.letter(letter)).", "\(letter) is for \(word)."],
-            ["\(letter) is for \(word)!"]
+            SpokenLine(clip: Clip.letterThats(letter), text: "That's \(Spoken.letter(letter))."),
+            SpokenLine(clip: Clip.quizIsFor(letter, word: word), text: "\(letter) is for \(word).")
         ]
-        return lines.randomElement() ?? lines[0]
     }
 }
 
@@ -456,23 +485,29 @@ struct NumberQuizDomain: QuizDomain {
         progressService.record(child: child, numberID: question.answer.id, correct: correct)
     }
 
-    func promptSpeech(for question: NumberQuizQuestion) -> String {
-        "How many \(question.object.plural) do you see?"
+    func promptSpeech(for question: NumberQuizQuestion) -> SpokenLine {
+        SpokenLine(clip: Clip.countPrompt(question.object.plural),
+                   text: "How many \(question.object.plural) do you see?")
     }
 
-    func correctSpeech(for question: NumberQuizQuestion, isFirstTry: Bool, childName: String) -> [String] {
+    func correctSpeech(for question: NumberQuizQuestion, isFirstTry: Bool, childName: String) -> [SpokenLine] {
         let opener = isFirstTry ? Praise.opener(childName: childName) : Praise.retryOpener()
         let things = question.object.name(forCount: question.answer.id)
-        return ["\(opener) \(question.answer.name) \(things)!"]
+        return [
+            opener,
+            SpokenLine(clip: Clip.countAnswer(question.answer.id, things: things),
+                       text: "\(question.answer.name) \(things)!")
+        ]
     }
 
     /// Says the count *with* the object — "There are four dogs" — so the
     /// correction models counting a quantity rather than just naming a numeral.
-    func incorrectSpeech(for question: NumberQuizQuestion, picked: Int, misses: Int) -> [String] {
+    func incorrectSpeech(for question: NumberQuizQuestion, picked: Int, misses: Int) -> [SpokenLine] {
         let count = question.answer.id
         let verb = count == 1 ? "is" : "are"
         let things = question.object.name(forCount: count)
-        return ["There \(verb) \(question.answer.name.lowercased()) \(things). Let's try again."]
+        return [SpokenLine(clip: Clip.countRetry(count, things: things),
+                           text: "There \(verb) \(question.answer.name.lowercased()) \(things). Let's try again.")]
     }
 
     /// The miss line already says the count aloud, so the tile lights up with it.
@@ -503,6 +538,6 @@ extension QuizEngineViewModel where Domain == NumberQuizDomain {
 
     /// The on-screen twin of the spoken prompt, so it names the object too.
     var promptText: String {
-        question.map(domain.promptSpeech(for:)) ?? "How many do you see?"
+        question.map { domain.promptSpeech(for: $0).text } ?? "How many do you see?"
     }
 }

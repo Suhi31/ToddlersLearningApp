@@ -120,7 +120,8 @@ ToddlerLearningApp/
 ├── Coordinators/   Coordinator protocol, Route, AppCoordinator
 ├── Models/         SwiftData @Model types + MasteryLevel
 ├── Content/        AlphabetContent, NumberContent, WordBuildContent,
-│                   LetterTracePathContent, RhymeContent
+│                   LetterTracePathContent, NumberTracePathContent,
+│                   TraceContent, RhymeContent
 ├── Services/       Speech, Progress, Reward, SessionTimer, Haptics, RhymeAudio
 ├── ViewModels/     one per screen
 ├── Views/          one folder per feature

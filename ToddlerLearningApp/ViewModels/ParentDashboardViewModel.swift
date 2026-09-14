@@ -111,7 +111,7 @@ final class ParentDashboardViewModel {
 
         return DomainSummary(
             id: "tracing",
-            title: "Tracing mastery",
+            title: "Letter tracing mastery",
             practiceTitle: "Worth practising together",
             practiceAdvice: "These come up shaky most often. A pencil and paper alongside the app helps more than extra screen time.",
             cells: letters.map { .init(id: $0.id, label: $0.uppercase, mastery: mastery($0)) },
@@ -126,7 +126,32 @@ final class ParentDashboardViewModel {
         )
     }
 
-    var summaries: [DomainSummary] { [letterSummary, numberSummary, traceSummary] }
+    /// Trace Numbers' twin of `traceSummary`. Every digit, 0–9, with no age
+    /// gate: the activity offers all ten, and there is no unlocked set of
+    /// digits to gate against — `unlockedNumbers` is counting 1–10.
+    var numberTraceSummary: DomainSummary {
+        let digits = TraceKind.numbers.items
+        let digitIDs = Set(digits.map(\.id))
+        let mastery = { (digit: TraceItem) in self.child.traceProgress(for: digit.id)?.mastery ?? .new }
+
+        return DomainSummary(
+            id: "numberTracing",
+            title: "Number tracing mastery",
+            practiceTitle: "Numbers worth tracing together",
+            practiceAdvice: "These come up shaky most often. Writing real numbers on paper together — an age on a birthday card, the house number — helps more than extra screen time.",
+            cells: digits.map { .init(id: $0.id, label: $0.glyph, mastery: mastery($0)) },
+            masteredCount: digits.count { mastery($0) == .mastered },
+            learningCount: digits.count { mastery($0) == .learning },
+            notStartedCount: digits.count { mastery($0) == .new },
+            needsPractice: child.traceProgress
+                .filter { digitIDs.contains($0.letterID) && $0.attempts >= 2 && $0.accuracy < 0.6 }
+                .sorted { $0.accuracy < $1.accuracy }
+                .prefix(5)
+                .map(\.letterID)
+        )
+    }
+
+    var summaries: [DomainSummary] { [letterSummary, numberSummary, traceSummary, numberTraceSummary] }
 
     // MARK: - Time
 

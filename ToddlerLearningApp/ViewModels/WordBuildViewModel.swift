@@ -214,7 +214,12 @@ final class WordBuildViewModel {
 
     func onAppear() {
         haptics.prepare()
-        ask(["Let's spell \(spokenWord)!", slotQuestion(for: 0)])
+        ask([spellPrompt, slotQuestion(for: 0)])
+    }
+
+    /// "Let's spell Cat!"
+    private var spellPrompt: SpokenLine {
+        SpokenLine(clip: Clip.wordSpell(currentWord.id), text: "Let's spell \(spokenWord)!")
     }
 
     func onDisappear() {
@@ -254,7 +259,7 @@ final class WordBuildViewModel {
         // period keeps it read as just the letter name (same fix as
         // SpeechService.teachLetter).
         if let next = nextSlotIndex {
-            ask(["\(expectedLetter).", slotQuestion(for: next)])
+            ask([Self.letterName(expectedLetter), slotQuestion(for: next)])
         } else {
             complete(lastLetter: expectedLetter)
         }
@@ -266,7 +271,20 @@ final class WordBuildViewModel {
     /// word is done.
     func repeatPrompt() {
         guard !isComplete, !isLocked, !isPromptPlaying, let slot = nextSlotIndex else { return }
-        ask(["\(spokenWord)!", slotQuestion(for: slot)])
+        ask([wordAlone, slotQuestion(for: slot)])
+    }
+
+    /// "Cat!" — the word on its own.
+    private var wordAlone: SpokenLine {
+        SpokenLine(clip: Clip.wordAlone(currentWord.id), text: "\(spokenWord)!")
+    }
+
+    /// A letter named on its own, as its tile is placed. The trailing period
+    /// is what stops AVSpeechSynthesizer spelling a lone character out with
+    /// "capital" prefixed (same fix as `SpeechService.teachLetter`); the
+    /// recording just says the letter.
+    private static func letterName(_ letter: String) -> SpokenLine {
+        SpokenLine(clip: Clip.letterName(letter), text: "\(letter).")
     }
 
     /// Starts a fresh round from zero — the "Play again" action on the
@@ -295,13 +313,20 @@ final class WordBuildViewModel {
         missesOnSlot += 1
         haptics.gentleMiss()
 
-        var sentences = ["That's \(Spoken.letter(tapped)).", "We need \(Spoken.letter(expected))!"]
+        let thats = SpokenLine(clip: Clip.letterThats(tapped), text: "That's \(Spoken.letter(tapped)).")
+        var sentences = [
+            thats,
+            SpokenLine(clip: Clip.letterWeNeed(expected), text: "We need \(Spoken.letter(expected))!")
+        ]
         if missesOnSlot >= Self.missesBeforeReveal,
            revealedTileID == nil,
            let answer = scrambledLetters.first(where: { $0.letter == expected && !$0.isUsed }) {
             revealedTileID = answer.id
             neededHelp = true
-            sentences = ["That's \(Spoken.letter(tapped)).", "Here's \(Spoken.letter(expected))!"]
+            sentences = [
+                thats,
+                SpokenLine(clip: Clip.letterHeres(expected), text: "Here's \(Spoken.letter(expected))!")
+            ]
         }
 
         isLocked = true
@@ -330,8 +355,10 @@ final class WordBuildViewModel {
 
         // Varied praise for a clean word, same as the quizzes; a word that
         // wasn't clean still finishes warmly, just without the celebration.
-        let closing = didEarnStar ? Praise.opener(childName: child.name) : "You did it!"
-        let sentences = ["\(lastLetter).", "\(spokenWord)!", closing]
+        let closing = didEarnStar
+            ? Praise.opener(childName: child.name)
+            : SpokenLine(clip: Clip.wordYouDidIt, text: "You did it!")
+        let sentences = [Self.letterName(lastLetter), wordAlone, closing]
 
         wordsCompleted += 1
         guard wordsCompleted < wordsPerRound else {
@@ -359,7 +386,7 @@ final class WordBuildViewModel {
         isComplete = false
         didEarnStar = false
         onSafeStoppingPoint?()
-        ask(["Let's spell \(spokenWord)!", slotQuestion(for: 0)])
+        ask([spellPrompt, slotQuestion(for: 0)])
     }
 
     private func setUp(for word: WordItem) {
@@ -402,14 +429,22 @@ final class WordBuildViewModel {
     /// What the child is asked about the slot they're filling — a real
     /// decision about one position, rather than hunting for any tile that
     /// happens to fit.
-    private func slotQuestion(for slot: Int) -> String {
-        if slot == 0 { return "What does \(spokenWord) start with?" }
-        if slot == currentWord.letters.count - 1 { return "What's the last letter?" }
-        return "What comes next?"
+    private func slotQuestion(for slot: Int) -> SpokenLine {
+        if slot == 0 {
+            // Not "What does Cat start with?" — the voice swallows "does" into
+            // something that hears as "is". Keep this in step with
+            // tools/gen_phase_b.py, which records the same words.
+            return SpokenLine(clip: Clip.wordStartsWith(currentWord.id),
+                              text: "What's the first letter in \(spokenWord)?")
+        }
+        if slot == currentWord.letters.count - 1 {
+            return SpokenLine(clip: Clip.wordLastLetter, text: "What's the last letter?")
+        }
+        return SpokenLine(clip: Clip.wordNext, text: "What comes next?")
     }
 
     /// Fire-and-forget: a newer line cuts this one off, same as `speak`.
-    private func say(_ sentences: [String]) {
+    private func say(_ sentences: [SpokenLine]) {
         Task { [speechService] in
             await speechService.speakAndWait(sentences)
         }
@@ -417,7 +452,7 @@ final class WordBuildViewModel {
 
     /// Like `say`, for a line that asks the question — tracked, so a replay
     /// tap can tell it's still playing. See `isPromptPlaying`.
-    private func ask(_ sentences: [String]) {
+    private func ask(_ sentences: [SpokenLine]) {
         // Returns when the line finishes or something newer cuts it off — a
         // wrong tap's line, say — either way it's no longer playing.
         promptPlayback.start { [speechService] in

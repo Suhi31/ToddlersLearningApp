@@ -36,42 +36,36 @@ extension NumberItem: BrowsableItem {
 struct ContentTile<Item: BrowsableItem>: View {
 
     let item: Item
-    var mastery: MasteryLevel = .new
     var isHighlighted: Bool = false
     let action: () -> Void
 
     private var tint: Color { AppColors.paletteColor(item.colorIndex) }
 
+    // No mastery star. Tiles used to show ⭐️ on letters the child had mastered
+    // in Find the Letter, but on a screen for exploring they read as a mystery
+    // reward with no explanation. Mastery is still tracked and still shown on
+    // the parent dashboard; it just isn't surfaced to the child here.
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                Text(item.tileLabel)
-                    .font(AppFonts.letterTile)
-                    .foregroundStyle(isHighlighted ? AppColors.ink(on: tint) : AppColors.title)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 76)
-                    .background(isHighlighted ? tint : tint.opacity(0.22))
-                    .clipShape(RoundedRectangle(cornerRadius: AppSpacing.tileCornerRadius))
-                    .glow(tint, active: isHighlighted)
-
-                if mastery == .mastered {
-                    Text("⭐️")
-                        .font(.system(size: 15))
-                        .padding(5)
-                }
-            }
-            .scaleEffect(isHighlighted ? 1.12 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.55), value: isHighlighted)
+            Text(item.tileLabel)
+                .font(AppFonts.letterTile)
+                .foregroundStyle(isHighlighted ? AppColors.ink(on: tint) : AppColors.title)
+                .frame(maxWidth: .infinity)
+                .frame(height: 76)
+                .background(isHighlighted ? tint : tint.opacity(0.22))
+                .clipShape(RoundedRectangle(cornerRadius: AppSpacing.tileCornerRadius))
+                .glow(tint, active: isHighlighted)
+                .scaleEffect(isHighlighted ? 1.12 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.55), value: isHighlighted)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(item.tileLabel), \(item.spokenName)")
-        .accessibilityValue(mastery == .mastered ? "Mastered" : "")
     }
 }
 
 #Preview {
     HStack {
-        ContentTile(item: AlphabetContent.letters[0], mastery: .mastered) {}
+        ContentTile(item: AlphabetContent.letters[0]) {}
         ContentTile(item: AlphabetContent.letters[1], isHighlighted: true) {}
         ContentTile(item: NumberContent.numbers[2], isHighlighted: true) {}
     }

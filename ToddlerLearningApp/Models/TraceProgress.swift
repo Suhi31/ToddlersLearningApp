@@ -18,7 +18,9 @@ final class TraceProgress {
 
     var id: UUID = UUID()
 
-    /// Matches `Letter.id`, e.g. "A".
+    /// Matches `TraceItem.id`: a letter ("A") from Trace Letters, or a digit
+    /// ("3") from Trace Numbers. Named before numbers could be traced, and
+    /// left that way — renaming a stored property needs a schema migration.
     var letterID: String = ""
 
     var attempts: Int = 0
@@ -41,6 +43,7 @@ final class TraceProgress {
         set { masteryRaw = newValue.rawValue }
     }
 
+    /// `nil` for a traced digit.
     var letter: Letter? {
         AlphabetContent.letter(id: letterID)
     }

@@ -49,12 +49,12 @@ private final class ScopedSpeechService: SpeechServicing {
         self.scopes = scopes
     }
 
-    func speak(_ text: String) {
+    func speak(_ line: SpokenLine) {
         claim()
-        base.speak(text)
+        base.speak(line)
     }
 
-    func speakAndWait(_ sentences: [String]) async {
+    func speakAndWait(_ sentences: [SpokenLine]) async {
         claim()
         await base.speakAndWait(sentences)
     }
@@ -64,9 +64,9 @@ private final class ScopedSpeechService: SpeechServicing {
         await base.teachLetter(letter)
     }
 
-    func teachNumber(_ number: NumberItem) async {
+    func teachNumber(_ number: NumberItem, onCount: @escaping @MainActor (Int?) -> Void) async {
         claim()
-        await base.teachNumber(number)
+        await base.teachNumber(number, onCount: onCount)
     }
 
     /// A no-op once another screen has spoken since — whatever is playing

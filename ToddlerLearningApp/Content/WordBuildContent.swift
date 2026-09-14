@@ -52,7 +52,9 @@ enum WordBuildContent {
         WordItem(id: "CAR", emoji: "🚗", colorIndex: 0),
         WordItem(id: "KEY", emoji: "🔑", colorIndex: 1),
         WordItem(id: "PEN", emoji: "🖊️", colorIndex: 2),
-        WordItem(id: "SAW", emoji: "🪚", colorIndex: 3),
+        // No SAW: the recorded voice says it with a leading vowel ("isa"), and
+        // no wording, punctuation or re-roll fixed it. Dropped rather than
+        // shipped mispronounced. See docs/VOICE_CLIPS.md.
         WordItem(id: "WEB", emoji: "🕸️", colorIndex: 4),
         WordItem(id: "NUT", emoji: "🥜", colorIndex: 5),
         WordItem(id: "PIE", emoji: "🥧", colorIndex: 6),

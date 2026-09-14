@@ -20,6 +20,7 @@ enum Route: Hashable {
     case learnNumbers
     /// Deep-link variant of `.learnNumbers`, positioned on a specific number.
     case learnNumbersDetail(Int)
+    case traceNumbers
     case numberQuiz
     case wordBuild
     case rhymes

@@ -96,20 +96,21 @@ struct TraceLetterTests {
     @Test("Back from A wraps to Z, and forward from Z wraps to A")
     func pagingWraps() throws {
         let (context, child) = try makeTestContext()
-        let trace = TraceLetterViewModel(child: child,
-                                         speechService: SilentSpeech(),
-                                         rewardService: RewardService(context: context),
-                                         progressService: ProgressService(context: context),
-                                         haptics: HapticsService())
+        let trace = TraceViewModel(kind: .letters,
+                                   child: child,
+                                   speechService: SilentSpeech(),
+                                   rewardService: RewardService(context: context),
+                                   progressService: ProgressService(context: context),
+                                   haptics: HapticsService())
 
-        #expect(trace.currentLetter?.id == "A")
+        #expect(trace.currentItem?.id == "A")
         #expect(trace.canGoBack)
 
         trace.previous()
-        #expect(trace.currentLetter?.id == "Z")
+        #expect(trace.currentItem?.id == "Z")
         #expect(trace.canGoForward)
 
         trace.next()
-        #expect(trace.currentLetter?.id == "A")
+        #expect(trace.currentItem?.id == "A")
     }
 }

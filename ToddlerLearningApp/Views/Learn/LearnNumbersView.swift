@@ -34,8 +34,24 @@ struct LearnNumbersView: View {
                                    count: min(number.id, 5)),
                     spacing: 6
                 ) {
-                    ForEach(0..<number.id, id: \.self) { _ in
-                        Text(number.emoji).font(.system(size: 34))
+                    ForEach(0..<number.id, id: \.self) { index in
+                        // Each object lights up as the voice reaches it, so a
+                        // child can see which thing every spoken number
+                        // belongs to. Ones already counted stay full strength;
+                        // the rest wait their turn.
+                        //
+                        // While nothing is being counted `countedSoFar` is nil
+                        // and nothing dims.
+                        let counted = viewModel.countedSoFar
+                        let isCurrent = counted == index + 1
+                        let isCounted = (counted ?? 0) > index
+
+                        Text(number.emoji)
+                            .font(.system(size: 34))
+                            .scaleEffect(isCurrent ? 1.35 : 1.0)
+                            .opacity(counted == nil || isCounted ? 1 : 0.35)
+                            .animation(.spring(response: 0.28, dampingFraction: 0.55),
+                                       value: counted)
                     }
                 }
                 .frame(maxWidth: 220)

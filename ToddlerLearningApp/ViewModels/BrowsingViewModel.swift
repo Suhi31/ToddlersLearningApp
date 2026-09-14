@@ -26,11 +26,18 @@ final class BrowsingViewModel<Item: Equatable> {
     let child: ChildProfile
     let items: [Item]
 
+    /// Which number is being counted aloud right now, 1-based, or `nil` when
+    /// nothing is being counted. Learn Numbers lights up the matching object;
+    /// Learn Letters never sets it.
+    ///
+    /// Stays `nil` for a recorded count whose timing file is missing — see
+    /// `RecordedSpeechService.countingOnsets(for:in:)`.
+    private(set) var countedSoFar: Int?
+
     private let speechService: SpeechServicing
     private let haptics: HapticsService
-    private let masteryProvider: (Item) -> MasteryLevel
     private let exposureRecorder: (Item) -> Void
-    private let teacher: (Item) async -> Void
+    private let teacher: (Item, @escaping @MainActor (Int?) -> Void) async -> Void
 
     private var speechTask: Task<Void, Never>?
 
@@ -46,14 +53,12 @@ final class BrowsingViewModel<Item: Equatable> {
          startIndex: Int = 0,
          speechService: SpeechServicing,
          haptics: HapticsService,
-         mastery: @escaping (Item) -> MasteryLevel,
          recordExposure: @escaping (Item) -> Void,
-         teach: @escaping (Item) async -> Void) {
+         teach: @escaping (Item, @escaping @MainActor (Int?) -> Void) async -> Void) {
         self.child = child
         self.items = items
         self.speechService = speechService
         self.haptics = haptics
-        self.masteryProvider = mastery
         self.exposureRecorder = recordExposure
         self.teacher = teach
         self.currentIndex = items.indices.contains(startIndex) ? startIndex : 0
@@ -71,10 +76,6 @@ final class BrowsingViewModel<Item: Equatable> {
         "\(currentIndex + 1) of \(items.count)"
     }
 
-    func mastery(for item: Item) -> MasteryLevel {
-        masteryProvider(item)
-    }
-
     // MARK: - Intent
 
     func onAppear() {
@@ -85,6 +86,8 @@ final class BrowsingViewModel<Item: Equatable> {
     func onDisappear() {
         speechTask?.cancel()
         speechService.stop()
+        // Leaving mid-count would otherwise strand a lit-up object.
+        countedSoFar = nil
     }
 
     func next() {
@@ -136,8 +139,12 @@ final class BrowsingViewModel<Item: Equatable> {
 
         speechTask?.cancel()
         speechService.stop()
-        speechTask = teaching.start { [teacher, current] in
-            await teacher(current)
+        // A highlight from the previous item must not survive into this one.
+        countedSoFar = nil
+        speechTask = teaching.start { [weak self, teacher, current] in
+            await teacher(current) { count in
+                self?.countedSoFar = count
+            }
         }
     }
 }
@@ -162,9 +169,9 @@ extension BrowsingViewModel where Item == Letter {
             startIndex: startingItem.flatMap { AlphabetContent.letters.firstIndex(of: $0) } ?? 0,
             speechService: speechService,
             haptics: haptics,
-            mastery: { child.progress(for: $0.id)?.mastery ?? .new },
             recordExposure: { progressService.recordExposure(child: child, letterID: $0.id) },
-            teach: { await speechService.teachLetter($0) }
+            // Letters have nothing to count, so the callback goes unused.
+            teach: { letter, _ in await speechService.teachLetter(letter) }
         )
     }
 
@@ -191,9 +198,10 @@ extension BrowsingViewModel where Item == NumberItem {
             startIndex: startingItem.flatMap { NumberContent.numbers.firstIndex(of: $0) } ?? 0,
             speechService: speechService,
             haptics: haptics,
-            mastery: { child.numberProgress(for: $0.id)?.mastery ?? .new },
             recordExposure: { progressService.recordExposure(child: child, numberID: $0.id) },
-            teach: { await speechService.teachNumber($0) }
+            teach: { number, onCount in
+                await speechService.teachNumber(number, onCount: onCount)
+            }
         )
     }
 

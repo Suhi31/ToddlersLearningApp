@@ -58,33 +58,7 @@ enum LetterTracePathContent {
             return point(turnX + radiusX * cos(angle), midY + radiusY * sin(angle))
         }
         let outline = [point(x, startY ?? topY)] + roundEnd + [point(x, endY ?? bottomY)]
-        return evenlySpaced(outline, spacing: 0.05)
-    }
-
-    /// `polyline` re-spaced into anchors an even `spacing` apart, ends kept
-    /// exact. Catmull-Rom only follows a shape faithfully when its anchors are
-    /// roughly evenly spread: sparse anchors on a straight arm next to dense
-    /// ones round a curve make it overshoot into bumps where the two meet.
-    private static func evenlySpaced(_ polyline: [CGPoint], spacing: CGFloat) -> [CGPoint] {
-        var lengths: [CGFloat] = [0]
-        for (from, to) in zip(polyline, polyline.dropFirst()) {
-            lengths.append(lengths[lengths.count - 1] + hypot(to.x - from.x, to.y - from.y))
-        }
-        guard let total = lengths.last, total > 0 else { return polyline }
-
-        let count = max(Int((total / spacing).rounded()), 2)
-        var segment = 0
-        return (0...count).map { step in
-            let target = total * CGFloat(step) / CGFloat(count)
-            while segment < polyline.count - 2, lengths[segment + 1] < target {
-                segment += 1
-            }
-            let from = polyline[segment]
-            let to = polyline[segment + 1]
-            let span = lengths[segment + 1] - lengths[segment]
-            let t = span > 0 ? (target - lengths[segment]) / span : 0
-            return point(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t)
-        }
+        return TraceOutline.evenlySpaced(outline, spacing: 0.05)
     }
 
     /// B's two bowls as one continuous stroke, meeting the stem in a point at
@@ -136,7 +110,7 @@ enum LetterTracePathContent {
             let angle = degrees * .pi / 180
             return point(center + radiusX * cos(angle), centerY + radiusY * sin(angle))
         }
-        return evenlySpaced(outline, spacing: 0.05)
+        return TraceOutline.evenlySpaced(outline, spacing: 0.05)
     }
 
     static let paths: [String: LetterTracePath] = [

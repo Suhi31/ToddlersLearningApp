@@ -135,7 +135,6 @@ struct BrowseScreen<Item: BrowsableItem, Stage: View>: View {
                     ForEach(viewModel.items) { item in
                         ContentTile(
                             item: item,
-                            mastery: viewModel.mastery(for: item),
                             isHighlighted: item == viewModel.current
                         ) {
                             viewModel.jump(to: item)

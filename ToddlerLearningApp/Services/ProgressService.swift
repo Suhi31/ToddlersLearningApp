@@ -172,7 +172,9 @@ final class ProgressService {
 
     // MARK: - Tracing
 
-    /// Returns the stored trace-progress for a letter, creating it on first encounter.
+    /// Returns the stored trace-progress for a letter or digit, creating it on
+    /// first encounter. `letterID` is a `TraceItem.id` — see
+    /// `TraceProgress.letterID`.
     @discardableResult
     func traceProgress(for child: ChildProfile, letterID: String) -> TraceProgress {
         if let existing = child.traceProgress(for: letterID) {
@@ -186,8 +188,8 @@ final class ProgressService {
 
     /// Records a trace attempt and applies promotion/demotion — same rules as
     /// the letter/number quiz domains above. `completed` is `true` for a
-    /// letter finished start to finish, `false` for "Try again" pressed with
-    /// meaningful progress already made — see `TraceLetterViewModel` for the
+    /// letter or digit finished start to finish, `false` for "Try again" pressed
+    /// with meaningful progress already made — see `TraceViewModel` for the
     /// exact threshold that counts as a miss rather than simply not attempted.
     func recordTrace(child: ChildProfile, letterID: String, completed: Bool) {
         apply(correct: completed, to: traceProgress(for: child, letterID: letterID))

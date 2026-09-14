@@ -188,16 +188,7 @@ final class AppCoordinator: Coordinator {
                 )
 
             case .traceLetters:
-                TraceLetterView(
-                    viewModel: TraceLetterViewModel(
-                        child: activeChild,
-                        speechService: dependencies.makeSpeechService(),
-                        rewardService: dependencies.rewardService,
-                        progressService: dependencies.progressService,
-                        haptics: dependencies.haptics
-                    ),
-                    coordinator: self
-                )
+                traceView(.letters, child: activeChild)
 
             case .quiz:
                 QuizView(
@@ -233,6 +224,9 @@ final class AppCoordinator: Coordinator {
                     ),
                     coordinator: self
                 )
+
+            case .traceNumbers:
+                traceView(.numbers, child: activeChild)
 
             case .numberQuiz:
                 NumberQuizView(
@@ -308,6 +302,21 @@ final class AppCoordinator: Coordinator {
         } else {
             ContentUnavailableView("Nothing to show", systemImage: "person.crop.circle.badge.exclamationmark")
         }
+    }
+
+    /// Trace Letters and Trace Numbers are one screen over two sets.
+    private func traceView(_ kind: TraceKind, child: ChildProfile) -> some View {
+        TraceView(
+            viewModel: TraceViewModel(
+                kind: kind,
+                child: child,
+                speechService: dependencies.makeSpeechService(),
+                rewardService: dependencies.rewardService,
+                progressService: dependencies.progressService,
+                haptics: dependencies.haptics
+            ),
+            coordinator: self
+        )
     }
 
     // MARK: - Resuming across relaunch (spec F1)

@@ -192,7 +192,7 @@ struct LetterQuizTests {
                 domain.incorrectSpeech(for: question, picked: picked, misses: 1),
                 domain.incorrectSpeech(for: question, picked: picked, misses: 2)
             ]
-            for sentence in lines.joined() {
+            for sentence in lines.joined().map(\.text) {
                 let range = NSRange(location: 0, length: (sentence as NSString).length)
                 #expect(runOn.firstMatch(in: sentence, range: range) == nil, "\(sentence)")
             }

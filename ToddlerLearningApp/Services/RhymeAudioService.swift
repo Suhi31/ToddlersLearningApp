@@ -31,9 +31,14 @@ import Foundation
 @MainActor
 protocol RhymeAudioPlaying: AnyObject {
     var isPlaying: Bool { get }
-    /// 0...1 through the current track, for a scrub bar and line-highlight
-    /// approximation in the detail view.
+    /// 0...1 through the current track, for a scrub bar and — where a rhyme
+    /// has no recorded timings — a line-highlight approximation in the detail
+    /// view.
     var progress: Double { get }
+    /// Seconds into the current recording. `RhymeCues` are in seconds, so the
+    /// detail view needs the real clock rather than a fraction. Stays 0 on the
+    /// read-aloud fallback path, which has no recording to be positioned in.
+    var currentTime: TimeInterval { get }
     /// Called when a track ends of its own accord. See the implementation.
     var onFinished: (() -> Void)? { get set }
     func play(_ rhyme: Rhyme)
@@ -48,6 +53,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
 
     private(set) var isPlaying = false
     private(set) var progress: Double = 0
+    private(set) var currentTime: TimeInterval = 0
 
     /// Fired when a track reaches its natural end — not on `pause()` or an
     /// explicit `stop()`. This is what the detail view model used to infer by
@@ -96,6 +102,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
             newPlayer.play()
             isPlaying = true
             progress = 0
+            currentTime = 0
             startProgressTimer()
         } catch {
             stop()
@@ -136,6 +143,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
         player = nil
         isPlaying = false
         progress = 0
+        currentTime = 0
         stopProgressTimer()
     }
 
@@ -231,6 +239,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
     private func updateProgress() {
         guard let player, player.duration > 0 else { return }
         progress = player.currentTime / player.duration
+        currentTime = player.currentTime
     }
 }
 

@@ -56,6 +56,21 @@ protocol QuizDomain {
 
     /// Whether the right tile lights up after `misses` wrong taps on one question.
     func revealsAnswer(afterMisses misses: Int) -> Bool
+
+    /// Speaks the question's count aloud one number at a time, reporting each
+    /// via `onCount` so the view can highlight the matching object as it's
+    /// said — the "show me" a child can ask for after missing a question.
+    /// Only Count & Find has a quantity to count; every other domain gets the
+    /// no-op default below.
+    func countAlong(for question: Question,
+                     speechService: SpeechServicing,
+                     onCount: @escaping @MainActor (Int?) -> Void) async
+}
+
+extension QuizDomain {
+    func countAlong(for question: Question,
+                     speechService: SpeechServicing,
+                     onCount: @escaping @MainActor (Int?) -> Void) async {}
 }
 
 @MainActor
@@ -98,6 +113,21 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     /// still the child's own look. Only meaningful while `feedback` is
     /// `.incorrect`.
     private(set) var isAnswerRevealed = false
+
+    /// Whether the child has missed the current question at least once. The
+    /// count-along "show me" option only appears once it's true — offering it
+    /// up front would let a child skip counting altogether.
+    private(set) var hasMissedCurrentQuestion = false
+
+    /// Which number count-along is saying right now, 1-based, or `nil` when
+    /// nothing is being counted. Only Count & Find sets this — see
+    /// `QuizDomain.countAlong(for:speechService:onCount:)`.
+    private(set) var countedSoFar: Int?
+
+    /// Whether count-along is currently speaking.
+    var isCounting: Bool { countingPlayback.isPlaying }
+
+    private let countingPlayback = PlaybackTracker()
 
     /// Whether the question is being spoken right now — as it appears, or
     /// replayed. A replay tap while it is does nothing: restarting the same
@@ -165,6 +195,8 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     func onDisappear() {
         advanceTask?.cancel()
         speechService.stop()
+        // Leaving mid-count would otherwise strand a lit-up object.
+        countedSoFar = nil
     }
 
     // MARK: - Intent
@@ -199,6 +231,7 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
             sentences = domain.correctSpeech(for: question, isFirstTry: isFirstTry, childName: child.name)
         } else {
             missesOnQuestion += 1
+            hasMissedCurrentQuestion = true
             isAnswerRevealed = domain.revealsAnswer(afterMisses: missesOnQuestion)
             feedback = .incorrect(picked)
             haptics.gentleMiss()
@@ -242,6 +275,21 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     func repeatPrompt() {
         guard isAcceptingInput, !isPromptPlaying, let question else { return }
         playPrompt(question)
+    }
+
+    /// Demonstrates counting the current question's quantity aloud, object by
+    /// object — offered only after a miss (see `hasMissedCurrentQuestion`),
+    /// and only meaningful where the domain implements `countAlong`.
+    func countAlong() {
+        guard isAcceptingInput, hasMissedCurrentQuestion, !isCounting, let question else { return }
+        haptics.tap()
+        isAcceptingInput = false
+        countingPlayback.start { [weak self, domain, speechService] in
+            await domain.countAlong(for: question, speechService: speechService) { count in
+                self?.countedSoFar = count
+            }
+            self?.isAcceptingInput = true
+        }
     }
 
     private func playPrompt(_ question: Domain.Question) {
@@ -306,6 +354,8 @@ final class QuizEngineViewModel<Domain: QuizDomain> {
     private func loadNextQuestion() {
         let previous = question.map(domain.answer(for:))
         missesOnQuestion = 0
+        hasMissedCurrentQuestion = false
+        countedSoFar = nil
         retryOptions = nil
         question = domain.nextQuestion(for: child, excluding: previous)
 
@@ -512,6 +562,16 @@ struct NumberQuizDomain: QuizDomain {
 
     /// The miss line already says the count aloud, so the tile lights up with it.
     func revealsAnswer(afterMisses misses: Int) -> Bool { true }
+
+    /// Reuses Learn Numbers' own counting sequence — "Four. One, two, three,
+    /// four." — rather than inventing a second one: same clips (or the same
+    /// synthesized fallback), same `onCount` timing the view already knows
+    /// how to highlight against.
+    func countAlong(for question: NumberQuizQuestion,
+                     speechService: SpeechServicing,
+                     onCount: @escaping @MainActor (Int?) -> Void) async {
+        await speechService.teachNumber(question.answer, onCount: onCount)
+    }
 }
 
 typealias NumberQuizViewModel = QuizEngineViewModel<NumberQuizDomain>

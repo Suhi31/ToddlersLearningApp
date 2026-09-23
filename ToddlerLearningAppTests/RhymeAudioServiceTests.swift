@@ -18,9 +18,18 @@ struct RhymeAudioServiceTests {
     /// Checked straight after the call, before the synthesizer's own callbacks
     /// can hop back to the main actor, so the result is deterministic.
     @Test("A finish reported for a line that isn't playing doesn't move the rhyme on")
-    func staleFinishIsIgnored() throws {
-        // Any rhyme without a bundled recording takes the read-aloud path.
-        let rhyme = try #require(RhymeContent.rhyme(id: "hickory-dickory-dock"))
+    func staleFinishIsIgnored() {
+        // A made-up audio file name, so this always takes the read-aloud path
+        // regardless of which rhymes currently ship a bundled recording.
+        let rhyme = Rhyme(
+            id: "test-rhyme",
+            title: "Test Rhyme",
+            lines: ["Line one.", "Line two."],
+            audioFileName: "no-such-clip.m4a",
+            emoji: "🎵",
+            colorIndex: 0,
+            linkage: .general
+        )
         let service = RhymeAudioService()
         service.play(rhyme)
         defer { service.stop() }

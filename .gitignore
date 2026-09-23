@@ -1,0 +1,24 @@
+# Only the audio the app actually bundles is committed — that is
+# ToddlerLearningApp/Resources/Speech (the one voice in use) and
+# ToddlerLearningApp/Resources/RhymeAudio (the 26 rhymes it plays).
+#
+# Everything else that was generated along the way — the other two voices, the
+# af_heart phonics backup, and the untouched rhyme masters — lives beside the
+# repo in ToddlerLearningAppAudio/ and is deliberately not in git. Point the
+# tools at it with VOICE_CLIPS_DIR if you keep it somewhere else.
+VoiceClips/
+
+# The voice/rhyme tooling's virtualenv (torch, demucs, whisper: ~1.2GB).
+# Rebuilt with the python3.12 command in docs/VOICE_CLIPS.md.
+venv/
+
+# Generator output, reviewed there before being copied into a voice set.
+out/
+
+# Per-user Xcode state: breakpoints, window layout, personal schemes.
+xcuserdata/
+
+__pycache__/
+*.pyc
+
+.DS_Store

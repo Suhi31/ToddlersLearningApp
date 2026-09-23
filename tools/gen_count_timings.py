@@ -42,6 +42,7 @@ old timings would light objects up at the wrong moments -- silently.
 """
 
 import hashlib
+import os
 import json
 import subprocess
 import sys
@@ -55,6 +56,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from gen_clips import NUMBERS, SPEED  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
+
+# The voice sets live beside the repo, not in it -- only the bundled voice is
+# committed. See .gitignore.
+VOICE_CLIPS = Path(os.environ.get(
+    "VOICE_CLIPS_DIR", REPO.parent / "ToddlerLearningAppAudio" / "VoiceClips"))
 SAMPLE_RATE = 24000
 
 # Where speech starts and stops: the same -40dB peak threshold `gen_clips.to_m4a`
@@ -131,7 +137,7 @@ def measure(pipeline, voice: str, clip: Path, count: int):
 
 def main():
     dirs = [Path(arg) for arg in sys.argv[1:]] or sorted(
-        path for path in (REPO / "VoiceClips").iterdir() if path.is_dir())
+        path for path in VOICE_CLIPS.iterdir() if path.is_dir())
 
     from kokoro import KPipeline
 

@@ -8,9 +8,27 @@
 //  Letters/Learn Numbers query to offer a "hear a rhyme" affordance for the
 //  item currently on screen; the rest are general sing-alongs with no tie-in.
 //
-//  Audio is not bundled yet — see docs/PRODUCT_SPEC.md and the app's
-//  RhymeAudioService: `audioFileName` names the resource each rhyme expects
-//  once licensed/public-domain recordings are added to Resources/RhymeAudio.
+//  Audio is real sung recordings — see Resources/RhymeAudio and
+//  RhymeAudioService. `audioFileName` names a file there and is
+//  case-sensitive. The recordings came from a licensed nursery-rhyme pack
+//  (2026-09-16), replacing an earlier text-to-speech placeholder — see the
+//  `rhyme-audio-sourcing` project memory for why that placeholder existed.
+//
+//  What ships is mono 64kbps AAC: the pack's own stereo 128kbps mp3s are more
+//  than a sing-along needs through a phone speaker, and at 38 minutes of audio
+//  they were 34MB of a 57MB app. The untouched originals are kept in a
+//  `RhymeAudioOriginals/` folder *beside* the repo rather than inside it —
+//  they are the masters to re-cut from if these ever need redoing, but they
+//  are deliberately out of version control, so only the audio the app actually
+//  plays is ever committed.
+//
+//  `lines` is what that recording actually sings, verse for verse — not a
+//  representative excerpt of the traditional words. The rhyme screen
+//  highlights the line being sung from measured cues (see `RhymeCues`), and
+//  those are aligned against these lines, so a verse the recording sings but
+//  this list omits can never light up. tools/gen_rhyme_cues.py reads the
+//  lyrics straight out of this file and reports how much of each recording
+//  they account for; re-run it after editing any line here.
 //
 
 import Foundation
@@ -26,10 +44,23 @@ enum RhymeContent {
                 "How I wonder what you are.",
                 "Up above the world so high,",
                 "Like a diamond in the sky.",
-                "Twinkle, twinkle, little star,",
-                "How I wonder what you are."
+                "When the blazing sun is gone,",
+                "When he nothing shines upon,",
+                "Then you show your little light,",
+                "Twinkle, twinkle, all the night.",
+                "Then the traveller in the dark",
+                "Thanks you for your tiny spark;",
+                "He could not see which way to go,",
+                "If you did not twinkle so.",
+                "In the dark blue sky you keep,",
+                "And often through my curtains peep,",
+                "For you never shut your eye",
+                "Till the sun is in the sky.",
+                "As your bright and tiny spark",
+                "Lights the traveller in the dark,",
+                "Though I know not what you are,"
             ],
-            audioFileName: "twinkle-twinkle.m4a",
+            audioFileName: "twinkleTwinkle.m4a",
             emoji: "⭐️",
             colorIndex: 6,
             linkage: .general
@@ -44,98 +75,10 @@ enum RhymeContent {
                 "The mouse ran down,",
                 "Hickory dickory dock."
             ],
-            audioFileName: "hickory-dickory-dock.m4a",
+            audioFileName: "hickoryDickoryDock.m4a",
             emoji: "🐭",
             colorIndex: 3,
             linkage: .general
-        ),
-        Rhyme(
-            id: "this-old-man",
-            title: "This Old Man",
-            lines: [
-                "This old man, he played one,",
-                "He played knick-knack on my thumb.",
-                "With a knick-knack, paddywhack,",
-                "Give a dog a bone,",
-                "This old man came rolling home."
-            ],
-            audioFileName: "this-old-man.m4a",
-            emoji: "🎵",
-            colorIndex: 1,
-            linkage: .general
-        ),
-        Rhyme(
-            id: "row-row-row-your-boat",
-            title: "Row, Row, Row Your Boat",
-            lines: [
-                "Row, row, row your boat,",
-                "Gently down the stream.",
-                "Merrily, merrily, merrily, merrily,",
-                "Life is but a dream."
-            ],
-            audioFileName: "row-row-row-your-boat.m4a",
-            emoji: "🚣",
-            colorIndex: 4,
-            linkage: .general
-        ),
-        Rhyme(
-            id: "one-two-buckle-my-shoe",
-            title: "One, Two, Buckle My Shoe",
-            lines: [
-                "One, two, buckle my shoe.",
-                "Three, four, knock at the door.",
-                "Five, six, pick up sticks.",
-                "Seven, eight, lay them straight.",
-                "Nine, ten, a big fat hen."
-            ],
-            audioFileName: "one-two-buckle-my-shoe.m4a",
-            emoji: "👞",
-            colorIndex: 0,
-            linkage: .number(1)
-        ),
-        Rhyme(
-            id: "two-little-blackbirds",
-            title: "Two Little Blackbirds",
-            lines: [
-                "Two little blackbirds sitting on a hill,",
-                "One named Jack, one named Jill.",
-                "Fly away, Jack! Fly away, Jill!",
-                "Come back, Jack! Come back, Jill!"
-            ],
-            audioFileName: "two-little-blackbirds.m4a",
-            emoji: "🐦",
-            colorIndex: 5,
-            linkage: .number(2)
-        ),
-        Rhyme(
-            id: "three-blind-mice",
-            title: "Three Blind Mice",
-            lines: [
-                "Three blind mice, three blind mice,",
-                "See how they run, see how they run.",
-                "They all ran after the farmer's wife,",
-                "Who cut off their tails with a carving knife.",
-                "Did you ever see such a thing in your life,",
-                "As three blind mice?"
-            ],
-            audioFileName: "three-blind-mice.m4a",
-            emoji: "🐁",
-            colorIndex: 2,
-            linkage: .number(3)
-        ),
-        Rhyme(
-            id: "five-little-ducks",
-            title: "Five Little Ducks",
-            lines: [
-                "Five little ducks went out one day,",
-                "Over the hill and far away.",
-                "Mother duck said, \"Quack, quack, quack, quack,\"",
-                "But only four little ducks came back."
-            ],
-            audioFileName: "five-little-ducks.m4a",
-            emoji: "🦆",
-            colorIndex: 4,
-            linkage: .number(5)
         ),
         Rhyme(
             id: "ten-in-the-bed",
@@ -147,7 +90,7 @@ enum RhymeContent {
                 "So they all rolled over,",
                 "And one fell out."
             ],
-            audioFileName: "ten-in-the-bed.m4a",
+            audioFileName: "tenInTheBed.m4a",
             emoji: "🛏️",
             colorIndex: 2,
             linkage: .number(10)
@@ -165,264 +108,450 @@ enum RhymeContent {
                 "And one for the little boy",
                 "Who lives down the lane."
             ],
-            audioFileName: "baa-baa-black-sheep.m4a",
+            audioFileName: "BaaBaaBlackSheep.m4a",
             emoji: "🐑",
             colorIndex: 1,
             linkage: .letter("B")
         ),
         Rhyme(
-            id: "itsy-bitsy-spider",
-            title: "The Itsy Bitsy Spider",
+            id: "hush-little-baby",
+            title: "Hush, Little Baby",
             lines: [
-                "The itsy bitsy spider climbed up the water spout.",
-                "Down came the rain and washed the spider out.",
-                "Out came the sun and dried up all the rain,",
-                "And the itsy bitsy spider climbed up the spout again."
+                "Hush, little baby, don't say a word,",
+                "Papa's gonna buy you a mockingbird.",
+                "If that mockingbird don't sing,",
+                "Papa's gonna buy you a diamond ring.",
+                "If that diamond ring turns brass,",
+                "Papa's gonna buy you a looking glass.",
+                "And if that looking glass gets broke,",
+                "Papa's gonna buy you a billy goat.",
+                "If that billy goat won't pull,",
+                "Papa's gonna buy you a cart and bull.",
+                "If that cart and bull turns over,",
+                "Papa's gonna buy you a dog named Rover.",
+                "If that dog named Rover won't bark,",
+                "Papa's gonna buy you a horse and cart.",
+                "If that horse and cart falls down,",
+                "You'll still be the sweetest little baby in town."
             ],
-            audioFileName: "itsy-bitsy-spider.m4a",
-            emoji: "🕷️",
+            audioFileName: "hushLittleBaby.m4a",
+            emoji: "👶",
             colorIndex: 4,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "bingo",
+            title: "B-I-N-G-O",
+            lines: [
+                "There was a farmer had a dog,",
+                "And Bingo was his name-o.",
+                "B-I-N-G-O! B-I-N-G-O! B-I-N-G-O!",
+                "And Bingo was his name-o."
+            ],
+            audioFileName: "bingoS.m4a",
+            emoji: "🐶",
+            colorIndex: 3,
+            linkage: .letter("B")
+        ),
+        Rhyme(
+            id: "im-a-little-teapot",
+            title: "I'm a Little Teapot",
+            lines: [
+                "I'm a little teapot, short and stout,",
+                "Here is my handle, here is my spout.",
+                "When I get all steamed up, hear me shout,",
+                "Tip me over and pour me out!"
+            ],
+            audioFileName: "imALittleTeapot.m4a",
+            emoji: "🫖",
+            colorIndex: 2,
+            linkage: .letter("T")
+        ),
+        Rhyme(
+            id: "little-snowflake",
+            title: "Little Snowflake",
+            lines: [
+                "Snowflake, snowflake, little snowflake,",
+                "Little snowflake falling from the sky.",
+                "Snowflake, snowflake, little snowflake,",
+                "Falling, falling, falling, falling, falling, falling,",
+                "Falling on my head.",
+                "Snowflake, snowflake, little snowflake,",
+                "Little snowflake falling from the sky.",
+                "Snowflake, snowflake, little snowflake,",
+                "Falling, falling, falling, falling, falling, falling,",
+                "Falling on my nose.",
+                "Snowflake, snowflake, little snowflake,",
+                "Little snowflake falling from the sky.",
+                "Snowflake, snowflake, little snowflake,",
+                "Falling, falling, falling, falling, falling, falling,",
+                "Falling in my hand.",
+                "Falling on my head.",
+                "Falling on my nose.",
+                "Falling in my hand.",
+                "Snowflake, snowflake, little snowflake."
+            ],
+            audioFileName: "littleSnowFlake.m4a",
+            emoji: "❄️",
+            colorIndex: 4,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "ring-a-ring-o-roses",
+            title: "Ring a Ring o' Roses",
+            lines: [
+                "Ring a ring o' roses,",
+                "A pocket full of posies,",
+                "A-tishoo! A-tishoo!",
+                "We all fall down!"
+            ],
+            audioFileName: "RingARingORoses.m4a",
+            emoji: "🌹",
+            colorIndex: 6,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "pat-a-cake",
+            title: "Pat-a-Cake",
+            lines: [
+                "Pat-a-cake, pat-a-cake, baker's man,",
+                "Bake me a cake just as fast as we can.",
+                "Pat it and prick it and mark it with B,",
+                "Put it in the oven for baby and me.",
+                "For baby and me, for baby and me,",
+                "Put it in the oven for baby and me."
+            ],
+            audioFileName: "patACake.m4a",
+            emoji: "🍰",
+            colorIndex: 0,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "rain-rain-go-away",
+            title: "Rain, Rain, Go Away",
+            lines: [
+                "Rain, rain, go away,",
+                "Come again another day.",
+                "Little one wants to play,",
+                "Rain, rain, go away."
+            ],
+            audioFileName: "rainRainGoAway.m4a",
+            emoji: "🌧️",
+            colorIndex: 4,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "if-youre-happy-and-you-know-it",
+            title: "If You're Happy and You Know It",
+            lines: [
+                "If you're happy and you know it, clap your hands!",
+                "If you're happy and you know it, clap your hands!",
+                "If you're happy and you know it, and you really want to show it,",
+                "If you're happy and you know it, clap your hands!"
+            ],
+            audioFileName: "ifYoureHappyAndYouKnowIt.m4a",
+            emoji: "😊",
+            colorIndex: 2,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "five-little-monkeys",
+            title: "Five Little Monkeys",
+            lines: [
+                "Five little monkeys jumping on the bed,",
+                "One fell off and bumped his head.",
+                "Mama called the doctor and the doctor said,",
+                "\"No more monkeys jumping on the bed!\""
+            ],
+            audioFileName: "fiveLittleMonkeys.m4a",
+            emoji: "🐒",
+            colorIndex: 0,
+            linkage: .number(5)
+        ),
+        Rhyme(
+            id: "head-shoulders-knees-and-toes",
+            title: "Head, Shoulders, Knees and Toes",
+            lines: [
+                "Head, shoulders, knees and toes,",
+                "Knees and toes!",
+                "Head, shoulders, knees and toes,",
+                "Knees and toes!",
+                "And eyes and ears and mouth and nose,",
+                "Head, shoulders, knees and toes,",
+                "Knees and toes!"
+            ],
+            audioFileName: "headAndShoulders.m4a",
+            emoji: "🙆",
+            colorIndex: 3,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "wheels-on-the-bus",
+            title: "The Wheels on the Bus",
+            lines: [
+                "The wheels on the bus go round and round,",
+                "Round and round, round and round.",
+                "The wheels on the bus go round and round,",
+                "All through the town.",
+                "The doors on the bus go open and shut,",
+                "Open and shut, open and shut.",
+                "The doors on the bus go open and shut,",
+                "All through the town.",
+                "The wipers on the bus go swish, swish, swish,",
+                "Swish, swish, swish, swish, swish, swish.",
+                "The wipers on the bus go swish, swish, swish,",
+                "All through the town.",
+                "The baby on the bus goes wah, wah, wah,",
+                "Wah, wah, wah, wah, wah, wah.",
+                "The baby on the bus goes wah, wah, wah,",
+                "All through the town.",
+                "The mommy on the bus goes shh, shh, shh,",
+                "Shh, shh, shh, shh, shh, shh.",
+                "The mommy on the bus goes shh, shh, shh,",
+                "All through the town.",
+                "The daddy on the bus goes read, read, read,",
+                "Read, read, read, read, read, read.",
+                "The daddy on the bus goes read, read, read,",
+                "All through the town.",
+                "The mommy and the daddy say I love you,",
+                "I love you, I love you.",
+                "The mommy and the daddy say I love you,",
+                "All through the town."
+            ],
+            audioFileName: "wheelsOnTheBus.m4a",
+            emoji: "🚌",
+            colorIndex: 5,
+            linkage: .letter("W")
+        ),
+        Rhyme(
+            id: "finger-family",
+            title: "Finger Family",
+            lines: [
+                "Daddy finger, Daddy finger, where are you?",
+                "Here I am, here I am, how do you do?",
+                "Mommy finger, Mommy finger, where are you?",
+                "Here I am, here I am, how do you do?"
+            ],
+            audioFileName: "fingerfamily.m4a",
+            emoji: "☝️",
+            colorIndex: 6,
+            linkage: .letter("F")
+        ),
+        Rhyme(
+            id: "teddy-bear-turn-around",
+            title: "Teddy Bear, Teddy Bear, Turn Around",
+            lines: [
+                "Teddy bear, teddy bear, turn around,",
+                "Teddy bear, teddy bear, touch the ground.",
+                "Teddy bear, teddy bear, jump up high,",
+                "Teddy bear, teddy bear, touch the sky.",
+                "Teddy bear, teddy bear, take my hand,",
+                "Teddy bear, teddy bear, you're my friend.",
+                "Teddy bear, teddy bear, I love you,",
+                "Teddy bear, teddy bear, this is true.",
+                "Teddy bear, teddy bear, turn off the light,",
+                "Everybody say shush, shhh!",
+                "Teddy bear, teddy bear, say goodnight."
+            ],
+            audioFileName: "teddyBear.m4a",
+            emoji: "🧸",
+            colorIndex: 1,
+            linkage: .letter("T")
+        ),
+        Rhyme(
+            id: "shes-coming-round-the-mountain",
+            title: "She'll Be Coming 'Round the Mountain",
+            lines: [
+                "She'll be coming round the mountain when she comes,",
+                "She'll be coming round the mountain when she comes,",
+                "She'll be coming round the mountain,",
+                "She'll be coming round the mountain,",
+                "She'll be coming round the mountain when she comes.",
+                "Singing aye, aye, yippee, yippee aye!",
+                "Singing aye, aye, yippee, yippee aye!",
+                "She'll be riding six white horses when she comes,",
+                "She'll be riding six white horses when she comes,",
+                "She'll be riding six white horses,",
+                "She'll be riding six white horses,",
+                "She'll be riding six white horses when she comes.",
+                "Singing aye, aye, yippee, yippee aye!",
+                "Singing aye, aye, yippee, yippee aye!",
+                "She'll be wearing pink pajamas when she comes,",
+                "She'll be wearing pink pajamas when she comes,",
+                "She'll be wearing pink pajamas,",
+                "She'll be wearing pink pajamas,",
+                "She'll be wearing pink pajamas when she comes.",
+                "Singing aye, aye, yippee, yippee aye!",
+                "Singing aye, aye, yippee, yippee aye!"
+            ],
+            audioFileName: "shellBeComingAroundTheMountain.m4a",
+            emoji: "🚂",
+            colorIndex: 3,
             linkage: .letter("S")
         ),
         Rhyme(
-            id: "little-miss-muffet",
-            title: "Little Miss Muffet",
+            id: "are-you-sleeping-brother-john",
+            title: "Are You Sleeping? (Brother John)",
             lines: [
-                "Little Miss Muffet sat on a tuffet,",
-                "Eating her curds and whey.",
-                "Along came a spider,",
-                "Who sat down beside her,",
-                "And frightened Miss Muffet away."
+                "Are you sleeping, are you sleeping,",
+                "Brother John, Brother John?",
+                "Morning bells are ringing, morning bells are ringing,",
+                "Ding, dang, dong! Ding, dang, dong!"
             ],
-            audioFileName: "little-miss-muffet.m4a",
-            emoji: "🥣",
-            colorIndex: 5,
-            linkage: .letter("M")
-        ),
-        Rhyme(
-            id: "jack-and-jill",
-            title: "Jack and Jill",
-            lines: [
-                "Jack and Jill went up the hill,",
-                "To fetch a pail of water.",
-                "Jack fell down and broke his crown,",
-                "And Jill came tumbling after."
-            ],
-            audioFileName: "jack-and-jill.m4a",
-            emoji: "⛰️",
-            colorIndex: 2,
-            linkage: .letter("J")
-        ),
-        Rhyme(
-            id: "old-macdonald",
-            title: "Old MacDonald Had a Farm",
-            lines: [
-                "Old MacDonald had a farm, E-I-E-I-O,",
-                "And on his farm he had a cow, E-I-E-I-O.",
-                "With a moo-moo here, and a moo-moo there,",
-                "Here a moo, there a moo, everywhere a moo-moo,",
-                "Old MacDonald had a farm, E-I-E-I-O."
-            ],
-            audioFileName: "old-macdonald.m4a",
-            emoji: "🚜",
-            colorIndex: 0,
-            linkage: .letter("O")
-        ),
-        Rhyme(
-            id: "humpty-dumpty",
-            title: "Humpty Dumpty",
-            lines: [
-                "Humpty Dumpty sat on a wall,",
-                "Humpty Dumpty had a great fall.",
-                "All the king's horses and all the king's men,",
-                "Couldn't put Humpty together again."
-            ],
-            audioFileName: "humpty-dumpty.m4a",
-            emoji: "🥚",
-            colorIndex: 3,
-            linkage: .letter("H")
-        ),
-        Rhyme(
-            id: "pussycat-pussycat",
-            title: "Pussycat, Pussycat",
-            lines: [
-                "Pussycat, pussycat, where have you been?",
-                "I've been to London to visit the Queen.",
-                "Pussycat, pussycat, what did you there?",
-                "I frightened a little mouse under her chair."
-            ],
-            audioFileName: "pussycat-pussycat.m4a",
-            emoji: "🐱",
-            colorIndex: 1,
-            linkage: .letter("P")
-        ),
-        Rhyme(
-            id: "a-was-an-apple-pie",
-            title: "A Was an Apple Pie",
-            lines: [
-                "A was an apple pie,",
-                "B bit it,",
-                "C cut it,",
-                "D dealt it,",
-                "E eat it,",
-                "F fought for it."
-            ],
-            audioFileName: "a-was-an-apple-pie.m4a",
-            emoji: "🥧",
-            colorIndex: 0,
+            audioFileName: "areYouSleepingBrotherJohn.m4a",
+            emoji: "🔔",
+            colorIndex: 4,
             linkage: .letter("A")
         ),
         Rhyme(
-            id: "cobbler-cobbler",
-            title: "Cobbler, Cobbler",
+            id: "im-a-little-star",
+            title: "I'm a Little Star",
             lines: [
-                "Cobbler, cobbler, mend my shoe,",
-                "Get it done by half past two.",
-                "Stitch it up and stitch it down,",
-                "Then I'll give you half a crown."
+                "I'm a little star hanging on a tree,",
+                "See the little children dance around me.",
+                "Tra la la, tra la la, tra la la, tra la la,",
+                "Tra la la, tra la la, tra la la la.",
+                "I'm a candy stick hanging on a tree,",
+                "See the little children dance around me.",
+                "Tra la la, tra la la, tra la la, tra la la,",
+                "Tra la la, tra la la, tra la la la.",
+                "I'm a pretty angel hanging on a tree,",
+                "See the little children dance around me.",
+                "Tra la la, tra la la, tra la la, tra la la,",
+                "Tra la la, tra la la, tra la la la.",
+                "I'm a bright light hanging on a tree,",
+                "See the little children dance around me.",
+                "Tra la la, tra la la, tra la la, tra la la,",
+                "Tra la la, tra la la, tra la la la."
             ],
-            audioFileName: "cobbler-cobbler.m4a",
-            emoji: "🧵",
+            audioFileName: "imALittleStar.m4a",
+            emoji: "✨",
+            colorIndex: 5,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "alphabet-song",
+            title: "The Alphabet Song",
+            lines: [
+                "A, B, C, D, E, F, G,",
+                "H, I, J, K, L, M, N, O, P,",
+                "Q, R, S, T, U, V,",
+                "W, X, Y, and Z.",
+                "Now I know my A-B-C's,",
+                "Next time won't you sing with me?"
+            ],
+            audioFileName: "alphabet_song.m4a",
+            emoji: "🔤",
+            colorIndex: 6,
+            linkage: .general
+        ),
+        Rhyme(
+            id: "yankee-doodle",
+            title: "Yankee Doodle",
+            lines: [
+                "Yankee Doodle went to town,",
+                "Riding on a pony,",
+                "Stuck a feather in his cap",
+                "And called it macaroni.",
+                "Yankee Doodle keep it up,",
+                "Yankee Doodle dandy,",
+                "Mind the music and the step,",
+                "And with the girls be handy.",
+                "Father and I went down to camp,",
+                "Along with Captain Gooding,",
+                "And there we saw the men and boys",
+                "As thick as hasty pudding.",
+                "There was Captain Washington",
+                "Upon a slapping stallion,",
+                "And all the men and boys around,",
+                "I guess there was a million."
+            ],
+            audioFileName: "yankeeDoodle.m4a",
+            emoji: "🎩",
+            colorIndex: 0,
+            linkage: .letter("Y")
+        ),
+        Rhyme(
+            id: "clap-clap-clap-your-hands",
+            title: "Clap, Clap, Clap Your Hands",
+            lines: [
+                "Clap, clap, clap your hands,",
+                "Clap your hands together.",
+                "Shake, shake, shake your hands,",
+                "Shake your hands together.",
+                "Pound, pound, pound your hands,",
+                "Pound your hands together.",
+                "Roll, roll, roll your hands,",
+                "Roll your hands together.",
+                "Pat, pat, pat your face,",
+                "Pat your face together."
+            ],
+            audioFileName: "clapClapClapYourHands.m4a",
+            emoji: "👏",
             colorIndex: 2,
             linkage: .letter("C")
         ),
         Rhyme(
-            id: "diddle-diddle-dumpling",
-            title: "Diddle, Diddle, Dumpling",
+            id: "muffin-man",
+            title: "The Muffin Man",
             lines: [
-                "Diddle, diddle, dumpling, my son John,",
-                "Went to bed with his trousers on.",
-                "One shoe off, and one shoe on,",
-                "Diddle, diddle, dumpling, my son John."
+                "Oh, do you know the muffin man,",
+                "The muffin man, the muffin man?",
+                "Oh, do you know the muffin man,",
+                "Who lives on Drury Lane?"
             ],
-            audioFileName: "diddle-diddle-dumpling.m4a",
-            emoji: "🛌",
-            colorIndex: 3,
-            linkage: .letter("D")
-        ),
-        Rhyme(
-            id: "fiddle-dee-dee",
-            title: "Fiddle-Dee-Dee",
-            lines: [
-                "Fiddle-dee-dee, fiddle-dee-dee,",
-                "The fly has married the bumblebee.",
-                "Says the fly, says he,",
-                "Will you marry me?"
-            ],
-            audioFileName: "fiddle-dee-dee.m4a",
-            emoji: "🐝",
-            colorIndex: 5,
-            linkage: .letter("F")
-        ),
-        Rhyme(
-            id: "georgie-porgie",
-            title: "Georgie Porgie",
-            lines: [
-                "Georgie Porgie, pudding and pie,",
-                "Kissed the girls and made them cry.",
-                "When the boys came out to play,",
-                "Georgie Porgie ran away."
-            ],
-            audioFileName: "georgie-porgie.m4a",
-            emoji: "🥧",
-            colorIndex: 6,
-            linkage: .letter("G")
-        ),
-        Rhyme(
-            id: "little-nut-tree",
-            title: "I Had a Little Nut Tree",
-            lines: [
-                "I had a little nut tree,",
-                "Nothing would it bear,",
-                "But a silver nutmeg,",
-                "And a golden pear."
-            ],
-            audioFileName: "little-nut-tree.m4a",
-            emoji: "🌰",
+            audioFileName: "muffinMan.m4a",
+            emoji: "🧁",
             colorIndex: 1,
-            linkage: .letter("I")
+            linkage: .letter("M")
         ),
         Rhyme(
-            id: "old-king-cole",
-            title: "Old King Cole",
+            id: "happy-birthday-to-you",
+            title: "Happy Birthday to You",
             lines: [
-                "Old King Cole was a merry old soul,",
-                "And a merry old soul was he;",
-                "He called for his pipe, and he called for his bowl,",
-                "And he called for his fiddlers three."
+                "Happy birthday to you,",
+                "Happy birthday to you,",
+                "Happy birthday, dear friend,",
+                "Happy birthday to you!"
             ],
-            audioFileName: "old-king-cole.m4a",
-            emoji: "👑",
-            colorIndex: 3,
-            linkage: .letter("K")
+            audioFileName: "happyBirthday.m4a",
+            emoji: "🎂",
+            colorIndex: 6,
+            linkage: .letter("H")
         ),
         Rhyme(
-            id: "little-bo-peep",
-            title: "Little Bo-Peep",
+            id: "london-bridge-is-falling-down",
+            title: "London Bridge Is Falling Down",
             lines: [
-                "Little Bo-Peep has lost her sheep,",
-                "And doesn't know where to find them.",
-                "Leave them alone, and they'll come home,",
-                "Wagging their tails behind them."
+                "London Bridge is falling down,",
+                "Falling down, falling down.",
+                "London Bridge is falling down,",
+                "My fair lady.",
+                "Build it up with wood and clay,",
+                "Wood and clay, wood and clay,",
+                "Build it up with wood and clay,",
+                "My fair lady.",
+                "Wood and clay will wash away,",
+                "Wash away, wash away,",
+                "Wood and clay will wash away,",
+                "My fair lady.",
+                "Build it up with bricks and mortar,",
+                "Bricks and mortar, bricks and mortar,",
+                "Build it up with bricks and mortar,",
+                "My fair lady.",
+                "Bricks and mortar will not stay,",
+                "Will not stay, will not stay,",
+                "Bricks and mortar will not stay,",
+                "My fair lady.",
+                "Build it up with silver and gold,",
+                "Silver and gold, silver and gold,",
+                "Build it up with silver and gold,",
+                "My fair lady."
             ],
-            audioFileName: "little-bo-peep.m4a",
-            emoji: "🐑",
+            audioFileName: "londonBridgeIsFallingDown.m4a",
+            emoji: "🌉",
             colorIndex: 4,
             linkage: .letter("L")
-        ),
-        Rhyme(
-            id: "queen-of-hearts",
-            title: "The Queen of Hearts",
-            lines: [
-                "The Queen of Hearts, she made some tarts,",
-                "All on a summer's day.",
-                "The Knave of Hearts, he stole those tarts,",
-                "And took them clean away."
-            ],
-            audioFileName: "queen-of-hearts.m4a",
-            emoji: "👸",
-            colorIndex: 6,
-            linkage: .letter("Q")
-        ),
-        Rhyme(
-            id: "ride-a-cock-horse",
-            title: "Ride a Cock-Horse",
-            lines: [
-                "Ride a cock-horse to Banbury Cross,",
-                "To see a fine lady upon a white horse.",
-                "Rings on her fingers and bells on her toes,",
-                "She shall have music wherever she goes."
-            ],
-            audioFileName: "ride-a-cock-horse.m4a",
-            emoji: "🐴",
-            colorIndex: 3,
-            linkage: .letter("R")
-        ),
-        Rhyme(
-            id: "tom-tom-the-pipers-son",
-            title: "Tom, Tom, the Piper's Son",
-            lines: [
-                "Tom, Tom, the piper's son,",
-                "Stole a pig, and away did run."
-            ],
-            audioFileName: "tom-tom-the-pipers-son.m4a",
-            emoji: "🐷",
-            colorIndex: 5,
-            linkage: .letter("T")
-        ),
-        Rhyme(
-            id: "wee-willie-winkie",
-            title: "Wee Willie Winkie",
-            lines: [
-                "Wee Willie Winkie runs through the town,",
-                "Upstairs and downstairs, in his nightgown,",
-                "Rapping at the window, crying through the lock,",
-                "\"Are the children all in bed? For now it's eight o'clock.\""
-            ],
-            audioFileName: "wee-willie-winkie.m4a",
-            emoji: "🌙",
-            colorIndex: 2,
-            linkage: .letter("W")
         )
     ]
 

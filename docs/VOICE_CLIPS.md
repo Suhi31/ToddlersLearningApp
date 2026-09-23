@@ -42,9 +42,16 @@ count plays with nothing lit.
 ## Layout
 
 ```
-VoiceClips/<voice>/*.m4a                every generated voice — NOT in the app target
-ToddlerLearningApp/Resources/Speech/    the one voice currently bundled
+../ToddlerLearningAppAudio/VoiceClips/<voice>/*.m4a   every generated voice — beside the repo, not in git
+ToddlerLearningApp/Resources/Speech/                  the one voice currently bundled — this is what ships
 ```
+
+The generated voices live **outside the repo** so only the audio the app
+actually plays is committed: three full voices plus a phonics backup is 32MB
+of alternates nothing loads. `tools/use_voice.sh` and `gen_count_timings.py`
+default to `../ToddlerLearningAppAudio/VoiceClips`; set `VOICE_CLIPS_DIR` to
+keep them elsewhere. The rhyme masters sit next to them in `RhymeOriginals/`,
+for the same reason.
 
 `Resources/Speech/` is inside the app folder, so Xcode's synchronized group
 picks it up automatically and the files land flat in the bundle, which is what
@@ -59,14 +66,19 @@ tools/use_voice.sh af_heart     # swap, then rebuild
 The target directory is replaced wholesale, never merged: a leftover clip from
 another voice would make a lesson switch voices halfway through.
 
-**One deliberate exception:** every `letter-<X>-phoneme.m4a` in
-`VoiceClips/af_heart/` is actually voiced by af_bella, not af_heart --
+**Deliberate exceptions:** every `letter-<X>-phoneme.m4a` in
+`VoiceClips/af_heart/` (beside the repo) is actually voiced by af_bella, not af_heart --
 af_heart's phonics sounds were judged wrong or just less pleasant on a
 listen-through, af_bella's were not, for all 26 letters. See
 `PHONEME_VOICE_OVERRIDE` in `tools/gen_clips.py`. The letter *names* and
 every other af_heart clip are unaffected. The af_heart-voiced phonics this
-replaced are kept at `VoiceClips/af_heart-phonics-backup-2026-09-14/` in
+replaced are kept at `../ToddlerLearningAppAudio/VoiceClips/af_heart-phonics-backup-2026-09-14/` in
 case af_bella's are ever rejected later.
+
+Same idea, one clip: `number-5-name.m4a` in `VoiceClips/af_heart/` is voiced by
+af_bella too, because af_heart mangles "Five." alone — see
+`NUMBER_VOICE_OVERRIDE` in `tools/gen_clips.py` and *Rules the audio depends
+on* below.
 
 ## What is recorded
 
@@ -75,7 +87,7 @@ case af_bella's are ever rejected later.
 | `letter-<ID>-name.m4a` | the letter's name — "Bee" |
 | `letter-<ID>-phoneme.m4a` | its phonics sound — "buh" |
 | `letter-<ID>-word.m4a` | "Bee is for Ball" |
-| `number-<ID>-name.m4a` / `-counting.m4a` | "Number one." / "One, two, three." — plus `-counting.json`, see *Counting timings* |
+| `number-<ID>-name.m4a` / `-counting.m4a` | "One." (af_bella for five, see *Rules the audio depends on*) / "One, two, three." — plus `-counting.json`, see *Counting timings* |
 | `trace-prompt-number-<N>.m4a` / `number-thats-<N>.m4a` | Trace Numbers, digits 0–9 — "Trace three." / "That's three." |
 | `quiz-*`, `count-*`, `word-*`, `trace-*`, `letter-thats-*`, `praise-*` | every other spoken line — see `Content/SpokenClips.swift` |
 
@@ -99,7 +111,8 @@ python3.12 -m venv venv && ./venv/bin/pip install kokoro soundfile openai-whispe
 ./venv/bin/python tools/gen_phase_b.py --voice af_heart --out B   # 1425 game/trace/praise clips
 ```
 
-Copy the output into `VoiceClips/<voice>/` and run `tools/use_voice.sh`.
+Copy the output into `../ToddlerLearningAppAudio/VoiceClips/<voice>/` and run
+`tools/use_voice.sh`.
 
 ### Regenerating just a few clips
 
@@ -175,12 +188,15 @@ can't quietly lose the fix.
 
 **A voice can mispronounce one specific word.** af_heart appends an /s/ to
 "five" when it is the entire utterance — "Five." becomes "fives". Spelling,
-punctuation and phoneme pins all failed; what works is giving the word company,
-which is why number names are phrased "Number five." rather than "Five."
-Multi-word lines were never affected ("Five apples.", "One, two, three, four,
-five."), other voices don't do it, and other words ending the same way
-("Twelve.") are fine. Expect the same class of fault elsewhere: check a new
-voice's short clips before trusting it.
+punctuation and phoneme pins all failed; what works is giving the word company
+("Five apples.", "One, two, three, four, five." are both clean) or changing
+voice. Number names are bare ("One.", "Two.", … "Ten.") except `number-5-name`,
+sourced from af_bella instead — see `NUMBER_VOICE_OVERRIDE` in `gen_clips.py`.
+Confirmed clean by ear 2026-09-16. Other voices don't have this fault, and
+other words ending the same way ("Twelve.") are fine on af_heart. Expect the
+same class of fault elsewhere: check a new voice's short clips before trusting
+it — nine other bare number names went unheard before this fix and could in
+principle have their own version of it.
 
 **Generation is not deterministic.** The same text and voice can produce a good
 clip one run and a faulty one the next — a bundled "Eight." came back wrong
@@ -188,14 +204,6 @@ while a freshly generated one was clean. So a defect found by ear is not
 necessarily reproducible, and regenerating a single clip is a legitimate fix.
 It also means a clean verification run does not guarantee the next batch is
 clean.
-
-## Open question
-
-Number names are phrased "Number five." for all ten, but only *five* needs the
-company — it is the one word af_heart mangles alone. The prefix is there so a
-child doesn't hear nine numbers announced one way and the fifth another. Worth
-revisiting: plain "One.", "Two." … with "Number five." as the single exception
-would be less wordy, at the cost of that inconsistency.
 
 ## Checking a generated set
 

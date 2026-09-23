@@ -48,23 +48,39 @@ struct RhymeDetailView: View {
         .onDisappear { viewModel.onDisappear() }
     }
 
+    /// Scrolls, and follows the singing: a full song runs to a couple of dozen
+    /// lines — London Bridge builds itself back up five times — which no longer
+    /// fits on a phone, and a child can't find the highlighted line if it's off
+    /// the bottom of the card.
     private var lyrics: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.tight) {
-            ForEach(Array(viewModel.rhyme.lines.enumerated()), id: \.offset) { index, line in
-                let isHighlighted = viewModel.highlightedLineIndex == index
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: AppSpacing.tight) {
+                    ForEach(Array(viewModel.rhyme.lines.enumerated()), id: \.offset) { index, line in
+                        let isHighlighted = viewModel.highlightedLineIndex == index
 
-                Text(line)
-                    .font(AppFonts.body)
-                    .foregroundStyle(isHighlighted ? .white : AppColors.title)
-                    .padding(.horizontal, AppSpacing.tight)
-                    .padding(.vertical, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(isHighlighted ? tint : .clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .animation(.easeInOut(duration: 0.2), value: isHighlighted)
+                        Text(line)
+                            .font(AppFonts.body)
+                            .foregroundStyle(isHighlighted ? .white : AppColors.title)
+                            .padding(.horizontal, AppSpacing.tight)
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(isHighlighted ? tint : .clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .animation(.easeInOut(duration: 0.2), value: isHighlighted)
+                            .id(index)
+                    }
+                }
+                .padding(AppSpacing.element)
+            }
+            .onChange(of: viewModel.highlightedLineIndex) { _, line in
+                guard let line else { return }
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    proxy.scrollTo(line, anchor: .center)
+                }
             }
         }
-        .padding(AppSpacing.element)
+        .frame(maxHeight: 340)
         .background(AppColors.card)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadius))
         .softShadow()

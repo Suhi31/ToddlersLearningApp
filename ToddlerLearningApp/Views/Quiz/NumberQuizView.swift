@@ -56,9 +56,20 @@ struct NumberQuizView: View {
     private func prompt(_ metrics: QuizLayoutMetrics) -> some View {
         VStack(spacing: AppSpacing.tight) {
             LazyVGrid(columns: promptColumns(metrics), spacing: Self.countingSpacing) {
-                ForEach(0..<viewModel.promptCount, id: \.self) { _ in
+                ForEach(0..<viewModel.promptCount, id: \.self) { index in
+                    // While count-along is speaking, each object lights up as
+                    // the voice reaches it — same convention as Learn Numbers
+                    // — so a child who missed can see which spoken number
+                    // belongs to which thing instead of just hearing a total.
+                    let counted = viewModel.countedSoFar
+                    let isCurrent = counted == index + 1
+                    let isCounted = (counted ?? 0) > index
+
                     Text(viewModel.promptEmoji)
                         .font(.system(size: metrics.countingEmojiSize))
+                        .scaleEffect(isCurrent ? 1.3 : 1.0)
+                        .opacity(counted == nil || isCounted ? 1 : 0.35)
+                        .animation(.spring(response: 0.28, dampingFraction: 0.55), value: counted)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -72,6 +83,26 @@ struct NumberQuizView: View {
                 .foregroundStyle(AppColors.subtitle)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, AppSpacing.element)
+
+            // Offered only once the child has missed this question — see
+            // `QuizEngineViewModel.hasMissedCurrentQuestion` — so it reads as
+            // help for a child who's stuck, not a shortcut around counting.
+            if viewModel.hasMissedCurrentQuestion {
+                Button {
+                    viewModel.countAlong()
+                } label: {
+                    Label("Count for me", systemImage: "hand.point.up.left.fill")
+                        .font(AppFonts.caption.weight(.bold))
+                        .foregroundStyle(AppColors.ink(on: AppColors.warning))
+                        .padding(.horizontal, AppSpacing.element)
+                        .padding(.vertical, AppSpacing.tight)
+                        .background(AppColors.warning, in: Capsule())
+                        .softShadow()
+                }
+                .buttonStyle(BouncyButtonStyle())
+                .disabled(!viewModel.isAcceptingInput)
+                .accessibilityLabel("Count the objects out loud")
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, AppSpacing.section)

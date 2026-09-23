@@ -29,7 +29,7 @@
 //    letter-<ID>-name.m4a      e.g. letter-A-name.m4a       ("A.")
 //    letter-<ID>-phoneme.m4a   e.g. letter-B-phoneme.m4a    ("buh")
 //    letter-<ID>-word.m4a      e.g. letter-C-word.m4a       ("C is for Cat")
-//    number-<ID>-name.m4a      e.g. number-1-name.m4a       ("Number one.")
+//    number-<ID>-name.m4a      e.g. number-1-name.m4a       ("One.")
 //    number-<ID>-counting.m4a  e.g. number-3-counting.m4a   ("One, two, three")
 //    number-<ID>-counting.json when each number starts in that clip — see
 //                              `countingOnsets(for:in:)`
@@ -148,9 +148,10 @@ final class RecordedSpeechService: SpeechServicing {
 
     // MARK: - Numbers
 
-    /// Two beats, like the synthesized lesson: "Number three.", then "One,
-    /// two, three." The name says "Number five." rather than "Five." because
-    /// this voice turns a lone "five" into "fives".
+    /// Two beats, like the synthesized lesson: "Three.", then "One, two,
+    /// three." The name for five is voiced by af_bella rather than this
+    /// voice, because this voice turns a lone "five" into "fives" — see
+    /// `NUMBER_VOICE_OVERRIDE` in `tools/gen_clips.py`.
     ///
     /// The counting recording is one clip, so it has no timing of its own for
     /// `onCount`. That comes from its timing file instead: the moment each

@@ -140,19 +140,22 @@ LETTERS = [
     ("Z", ("ipa",   "zˈi"),        ("ipa",   "zə"),   "Zebra"),
 ]
 
-# The number-name beat says "Number five.", not "Five."
+# The number-name beat is the bare number -- "Five.", not "Number five."
 #
-# af_heart appends an /s/ to "five" when it is the whole utterance -- "Five."
-# becomes "fives" -- and nothing about the spelling fixes it: punctuation,
-# phoneme pins (/fˈIv/) and the spelling "Fyve" all failed. What does fix it is
-# not being alone: "Five apples." and "One, two, three, four, five." are both
-# clean, and in "Five. Five." only the second, isolated one is wrong. Other
-# voices don't do this, and other words ending the same way ("Twelve.") are
-# fine, so it is this word in this voice.
+# It wasn't always: af_heart appends an /s/ to "five" when it is the whole
+# utterance -- "Five." becomes "fives" -- and nothing about the text fixed it
+# (punctuation, phoneme pins, the spelling "Fyve" all failed; giving the word
+# company did -- "Five apples." and "One, two, three, four, five." are both
+# clean). That was worked around by phrasing all ten names "Number five.",
+# "Number one.", etc., so the odd one out wasn't announced differently from
+# its neighbours -- at the cost of nine numbers carrying a prefix only one of
+# them needed.
 #
-# The phrasing is applied to all ten so one number isn't announced differently
-# from its neighbours.
-NUMBER_NAME_TEMPLATE = "Number {}."
+# af_bella has no such problem with "Five." alone (confirmed by ear
+# 2026-09-16), so the fix is now the same move as the letter phonics above:
+# route just this one clip to af_bella and let every name go back to being
+# bare. See NUMBER_VOICE_OVERRIDE.
+NUMBER_NAME_TEMPLATE = "{}."
 
 NUMBERS = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"]
 
@@ -181,12 +184,23 @@ VOICES = ["af_sarah", "af_heart", "af_bella"]
 # own voice throughout, unaffected.
 PHONEME_VOICE_OVERRIDE = {"af_heart": {letter_id: "af_bella" for letter_id, _, _, _ in LETTERS}}
 
+# af_heart's "fives" mispronunciation, isolated -- see NUMBER_NAME_TEMPLATE.
+# Only number 5's *name* clip is affected; its counting clip already says
+# "five" cleanly (it's never alone there), so this doesn't touch counting.
+NUMBER_VOICE_OVERRIDE = {"af_heart": {5: "af_bella"}}
+
 
 def clip_voice(voice, stem):
-    """Which voice actually synthesizes this clip -- see PHONEME_VOICE_OVERRIDE."""
+    """Which voice actually synthesizes this clip -- see PHONEME_VOICE_OVERRIDE
+    and NUMBER_VOICE_OVERRIDE."""
     if stem.startswith("letter-") and stem.endswith("-phoneme"):
         letter_id = stem.split("-")[1]
         override = PHONEME_VOICE_OVERRIDE.get(voice, {}).get(letter_id)
+        if override:
+            return override
+    if stem.startswith("number-") and stem.endswith("-name"):
+        number_id = int(stem.split("-")[1])
+        override = NUMBER_VOICE_OVERRIDE.get(voice, {}).get(number_id)
         if override:
             return override
     return voice

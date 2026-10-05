@@ -1,6 +1,6 @@
 # Only the audio the app actually bundles is committed — that is
 # ToddlerLearningApp/Resources/Speech (the one voice in use) and
-# ToddlerLearningApp/Resources/RhymeAudio (the 26 rhymes it plays).
+# ToddlerLearningApp/Resources/RhymeAudio (the rhymes it plays).
 #
 # Everything else that was generated along the way — the other two voices, the
 # af_heart phonics backup, and the untouched rhyme masters — lives beside the

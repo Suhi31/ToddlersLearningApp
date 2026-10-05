@@ -23,12 +23,27 @@
 //  plays is ever committed.
 //
 //  `lines` is what that recording actually sings, verse for verse — not a
-//  representative excerpt of the traditional words. The rhyme screen
-//  highlights the line being sung from measured cues (see `RhymeCues`), and
-//  those are aligned against these lines, so a verse the recording sings but
-//  this list omits can never light up. tools/gen_rhyme_cues.py reads the
-//  lyrics straight out of this file and reports how much of each recording
-//  they account for; re-run it after editing any line here.
+//  representative excerpt of the traditional words, and not the traditional
+//  words at all where the recording differs. That includes the verses that
+//  change by a single word: Ten in the Bed counts down from ten, If You're
+//  Happy has four actions, Rain Rain asks after six people. The pack's Happy
+//  Birthday sings "Happy birthday, happy birthday" where the traditional line
+//  has a name, its Muffin Man says "that lives on Drury Lane", and its
+//  B-I-N-G-O goes straight from four letters to two. The words people know are
+//  a guide to what to listen for, never a substitute for listening.
+//
+//  The rhyme screen highlights the line being sung from measured cues (see
+//  `RhymeCues`), and those are aligned against these lines, so a verse the
+//  recording sings but this list omits can never light up. A verse that is
+//  sung twice through is written once; the cues revisit it.
+//  tools/gen_rhyme_cues.py reads the lyrics straight out of this file, reports
+//  how much of each recording they account for, and stamps each cue file with
+//  a digest of the words it was aligned against. Re-run it after editing any
+//  line here: a cue file made for other lyrics highlights the wrong lines.
+//
+//  👏 stands for the clap that replaces a letter in B-I-N-G-O. A pre-reader
+//  knows it on sight, VoiceOver reads it as "clapping hands", and it has no
+//  letters in it, so the cue aligner leaves it out of its matching.
 //
 
 import Foundation
@@ -88,7 +103,50 @@ enum RhymeContent {
                 "And the little one said,",
                 "\"Roll over, roll over!\"",
                 "So they all rolled over,",
-                "And one fell out."
+                "And one fell out.",
+                "There were nine in the bed,",
+                "And the little one said,",
+                "\"Roll over, roll over!\"",
+                "So they all rolled over,",
+                "And one fell out.",
+                "There were eight in the bed,",
+                "And the little one said,",
+                "\"Roll over, roll over!\"",
+                "So they all rolled over,",
+                "And one fell out.",
+                "There were seven in the bed,",
+                "And the little one said,",
+                "\"Roll over, roll over!\"",
+                "So they all rolled over,",
+                "And one fell out.",
+                "There were six in the bed,",
+                "And the little one said,",
+                "\"Roll over, roll over!\"",
+                "So they all rolled over,",
+                "And one fell out.",
+                "There were five in the bed,",
+                "And the little one said,",
+                "\"Roll over, roll over!\"",
+                "So they all rolled over,",
+                "And one fell out.",
+                "There were four in the bed,",
+                "And the little one said,",
+                "\"Roll over, roll over!\"",
+                "So they all rolled over,",
+                "And one fell out.",
+                "There were three in the bed,",
+                "And the little one said,",
+                "\"Roll over, roll over!\"",
+                "So they all rolled over,",
+                "And one fell out.",
+                "There were two in the bed,",
+                "And the little one said,",
+                "\"Roll over, roll over!\"",
+                "So they all rolled over,",
+                "And one fell out.",
+                "There was one in the bed,",
+                "And the little one said,",
+                "\"Good night!\""
             ],
             audioFileName: "tenInTheBed.m4a",
             emoji: "🛏️",
@@ -104,7 +162,7 @@ enum RhymeContent {
                 "Yes sir, yes sir,",
                 "Three bags full.",
                 "One for the master,",
-                "One for the dame,",
+                "And one for the dame,",
                 "And one for the little boy",
                 "Who lives down the lane."
             ],
@@ -146,6 +204,22 @@ enum RhymeContent {
                 "There was a farmer had a dog,",
                 "And Bingo was his name-o.",
                 "B-I-N-G-O! B-I-N-G-O! B-I-N-G-O!",
+                "And Bingo was his name-o.",
+                "There was a farmer had a dog,",
+                "And Bingo was his name-o.",
+                "👏-I-N-G-O! 👏-I-N-G-O! 👏-I-N-G-O!",
+                "And Bingo was his name-o.",
+                "There was a farmer had a dog,",
+                "And Bingo was his name-o.",
+                "👏-👏-👏-G-O! 👏-👏-👏-G-O! 👏-👏-👏-G-O!",
+                "And Bingo was his name-o.",
+                "There was a farmer had a dog,",
+                "And Bingo was his name-o.",
+                "👏-👏-👏-👏-O! 👏-👏-👏-👏-O! 👏-👏-👏-👏-O!",
+                "And Bingo was his name-o.",
+                "There was a farmer had a dog,",
+                "And Bingo was his name-o.",
+                "👏-👏-👏-👏-👏! 👏-👏-👏-👏-👏! 👏-👏-👏-👏-👏!",
                 "And Bingo was his name-o."
             ],
             audioFileName: "bingoS.m4a",
@@ -160,41 +234,12 @@ enum RhymeContent {
                 "I'm a little teapot, short and stout,",
                 "Here is my handle, here is my spout.",
                 "When I get all steamed up, hear me shout,",
-                "Tip me over and pour me out!"
+                "Just tip me over and pour me out!"
             ],
             audioFileName: "imALittleTeapot.m4a",
             emoji: "🫖",
             colorIndex: 2,
             linkage: .letter("T")
-        ),
-        Rhyme(
-            id: "little-snowflake",
-            title: "Little Snowflake",
-            lines: [
-                "Snowflake, snowflake, little snowflake,",
-                "Little snowflake falling from the sky.",
-                "Snowflake, snowflake, little snowflake,",
-                "Falling, falling, falling, falling, falling, falling,",
-                "Falling on my head.",
-                "Snowflake, snowflake, little snowflake,",
-                "Little snowflake falling from the sky.",
-                "Snowflake, snowflake, little snowflake,",
-                "Falling, falling, falling, falling, falling, falling,",
-                "Falling on my nose.",
-                "Snowflake, snowflake, little snowflake,",
-                "Little snowflake falling from the sky.",
-                "Snowflake, snowflake, little snowflake,",
-                "Falling, falling, falling, falling, falling, falling,",
-                "Falling in my hand.",
-                "Falling on my head.",
-                "Falling on my nose.",
-                "Falling in my hand.",
-                "Snowflake, snowflake, little snowflake."
-            ],
-            audioFileName: "littleSnowFlake.m4a",
-            emoji: "❄️",
-            colorIndex: 4,
-            linkage: .general
         ),
         Rhyme(
             id: "ring-a-ring-o-roses",
@@ -211,28 +256,32 @@ enum RhymeContent {
             linkage: .general
         ),
         Rhyme(
-            id: "pat-a-cake",
-            title: "Pat-a-Cake",
-            lines: [
-                "Pat-a-cake, pat-a-cake, baker's man,",
-                "Bake me a cake just as fast as we can.",
-                "Pat it and prick it and mark it with B,",
-                "Put it in the oven for baby and me.",
-                "For baby and me, for baby and me,",
-                "Put it in the oven for baby and me."
-            ],
-            audioFileName: "patACake.m4a",
-            emoji: "🍰",
-            colorIndex: 0,
-            linkage: .general
-        ),
-        Rhyme(
             id: "rain-rain-go-away",
             title: "Rain, Rain, Go Away",
             lines: [
                 "Rain, rain, go away,",
                 "Come again another day.",
-                "Little one wants to play,",
+                "Daddy wants to play,",
+                "Rain, rain, go away.",
+                "Rain, rain, go away,",
+                "Come again another day.",
+                "Mommy wants to play,",
+                "Rain, rain, go away.",
+                "Rain, rain, go away,",
+                "Come again another day.",
+                "Brother wants to play,",
+                "Rain, rain, go away.",
+                "Rain, rain, go away,",
+                "Come again another day.",
+                "Sister wants to play,",
+                "Rain, rain, go away.",
+                "Rain, rain, go away,",
+                "Come again another day.",
+                "Baby wants to play,",
+                "Rain, rain, go away.",
+                "Rain, rain, go away,",
+                "Come again another day.",
+                "All the family wants to play,",
                 "Rain, rain, go away."
             ],
             audioFileName: "rainRainGoAway.m4a",
@@ -247,7 +296,19 @@ enum RhymeContent {
                 "If you're happy and you know it, clap your hands!",
                 "If you're happy and you know it, clap your hands!",
                 "If you're happy and you know it, and you really want to show it,",
-                "If you're happy and you know it, clap your hands!"
+                "If you're happy and you know it, clap your hands!",
+                "If you're happy and you know it, stamp your feet!",
+                "If you're happy and you know it, stamp your feet!",
+                "If you're happy and you know it, and you really want to show it,",
+                "If you're happy and you know it, stamp your feet!",
+                "If you're happy and you know it, snap your fingers!",
+                "If you're happy and you know it, snap your fingers!",
+                "If you're happy and you know it, and you really want to show it,",
+                "If you're happy and you know it, snap your fingers!",
+                "If you're happy and you know it, shout hooray!",
+                "If you're happy and you know it, shout hooray!",
+                "If you're happy and you know it, and you really want to show it,",
+                "If you're happy and you know it, shout hooray!"
             ],
             audioFileName: "ifYoureHappyAndYouKnowIt.m4a",
             emoji: "😊",
@@ -260,7 +321,23 @@ enum RhymeContent {
             lines: [
                 "Five little monkeys jumping on the bed,",
                 "One fell off and bumped his head.",
-                "Mama called the doctor and the doctor said,",
+                "Mother called the doctor and the doctor said,",
+                "\"No more monkeys jumping on the bed!\"",
+                "Four little monkeys jumping on the bed,",
+                "One fell off and bumped his head.",
+                "Mother called the doctor and the doctor said,",
+                "\"No more monkeys jumping on the bed!\"",
+                "Three little monkeys jumping on the bed,",
+                "One fell off and bumped his head.",
+                "Mother called the doctor and the doctor said,",
+                "\"No more monkeys jumping on the bed!\"",
+                "Two little monkeys jumping on the bed,",
+                "One fell off and bumped his head.",
+                "Mother called the doctor and the doctor said,",
+                "\"No more monkeys jumping on the bed!\"",
+                "One little monkey jumping on the bed,",
+                "He fell off and bumped his head.",
+                "Mother called the doctor and the doctor said,",
                 "\"No more monkeys jumping on the bed!\""
             ],
             audioFileName: "fiveLittleMonkeys.m4a",
@@ -330,6 +407,12 @@ enum RhymeContent {
                 "Daddy finger, Daddy finger, where are you?",
                 "Here I am, here I am, how do you do?",
                 "Mommy finger, Mommy finger, where are you?",
+                "Here I am, here I am, how do you do?",
+                "Brother finger, Brother finger, where are you?",
+                "Here I am, here I am, how do you do?",
+                "Sister finger, Sister finger, where are you?",
+                "Here I am, here I am, how do you do?",
+                "Baby finger, Baby finger, where are you?",
                 "Here I am, here I am, how do you do?"
             ],
             audioFileName: "fingerfamily.m4a",
@@ -376,32 +459,30 @@ enum RhymeContent {
                 "She'll be riding six white horses when she comes.",
                 "Singing aye, aye, yippee, yippee aye!",
                 "Singing aye, aye, yippee, yippee aye!",
-                "She'll be wearing pink pajamas when she comes,",
-                "She'll be wearing pink pajamas when she comes,",
-                "She'll be wearing pink pajamas,",
-                "She'll be wearing pink pajamas,",
-                "She'll be wearing pink pajamas when she comes.",
+                "Well, we'll all go out to meet her when she comes,",
+                "Well, we'll all go out to meet her when she comes,",
+                "Well, we'll all go out to meet her,",
+                "Yes, we'll all go out to meet her,",
+                "Yes, we'll all go out to meet her when she comes.",
                 "Singing aye, aye, yippee, yippee aye!",
-                "Singing aye, aye, yippee, yippee aye!"
+                "Singing aye, aye, yippee, yippee aye!",
+                "She'll be wearing silk pajamas when she comes,",
+                "She'll be wearing silk pajamas when she comes,",
+                "She'll be wearing pink pajamas,",
+                "Wearing pink pajamas,",
+                "Wearing pink pajamas when she comes.",
+                "Singing aye, aye, yippee, yippee aye!",
+                "Singing aye, aye, yippee, yippee aye!",
+                "Well, she'll be coming round the mountain when she comes,",
+                "She'll be coming round the mountain when she comes,",
+                "She'll be coming round the mountain,",
+                "Coming round the mountain,",
+                "Coming round the mountain when she comes."
             ],
             audioFileName: "shellBeComingAroundTheMountain.m4a",
             emoji: "🚂",
             colorIndex: 3,
             linkage: .letter("S")
-        ),
-        Rhyme(
-            id: "are-you-sleeping-brother-john",
-            title: "Are You Sleeping? (Brother John)",
-            lines: [
-                "Are you sleeping, are you sleeping,",
-                "Brother John, Brother John?",
-                "Morning bells are ringing, morning bells are ringing,",
-                "Ding, dang, dong! Ding, dang, dong!"
-            ],
-            audioFileName: "areYouSleepingBrotherJohn.m4a",
-            emoji: "🔔",
-            colorIndex: 4,
-            linkage: .letter("A")
         ),
         Rhyme(
             id: "im-a-little-star",
@@ -495,10 +576,14 @@ enum RhymeContent {
             id: "muffin-man",
             title: "The Muffin Man",
             lines: [
-                "Oh, do you know the muffin man,",
+                "Do you know the muffin man,",
                 "The muffin man, the muffin man?",
-                "Oh, do you know the muffin man,",
-                "Who lives on Drury Lane?"
+                "Do you know the muffin man",
+                "That lives on Drury Lane?",
+                "Oh, yes, I know the muffin man,",
+                "The muffin man, the muffin man.",
+                "Yes, I know the muffin man",
+                "That lives on Drury Lane."
             ],
             audioFileName: "muffinMan.m4a",
             emoji: "🧁",
@@ -511,47 +596,13 @@ enum RhymeContent {
             lines: [
                 "Happy birthday to you,",
                 "Happy birthday to you,",
-                "Happy birthday, dear friend,",
+                "Happy birthday, happy birthday,",
                 "Happy birthday to you!"
             ],
             audioFileName: "happyBirthday.m4a",
             emoji: "🎂",
             colorIndex: 6,
             linkage: .letter("H")
-        ),
-        Rhyme(
-            id: "london-bridge-is-falling-down",
-            title: "London Bridge Is Falling Down",
-            lines: [
-                "London Bridge is falling down,",
-                "Falling down, falling down.",
-                "London Bridge is falling down,",
-                "My fair lady.",
-                "Build it up with wood and clay,",
-                "Wood and clay, wood and clay,",
-                "Build it up with wood and clay,",
-                "My fair lady.",
-                "Wood and clay will wash away,",
-                "Wash away, wash away,",
-                "Wood and clay will wash away,",
-                "My fair lady.",
-                "Build it up with bricks and mortar,",
-                "Bricks and mortar, bricks and mortar,",
-                "Build it up with bricks and mortar,",
-                "My fair lady.",
-                "Bricks and mortar will not stay,",
-                "Will not stay, will not stay,",
-                "Bricks and mortar will not stay,",
-                "My fair lady.",
-                "Build it up with silver and gold,",
-                "Silver and gold, silver and gold,",
-                "Build it up with silver and gold,",
-                "My fair lady."
-            ],
-            audioFileName: "londonBridgeIsFallingDown.m4a",
-            emoji: "🌉",
-            colorIndex: 4,
-            linkage: .letter("L")
         )
     ]
 

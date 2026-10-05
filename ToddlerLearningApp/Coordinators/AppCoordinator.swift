@@ -254,7 +254,10 @@ final class AppCoordinator: Coordinator {
 
             case .rhymes:
                 RhymesView(
-                    viewModel: RhymesViewModel(haptics: dependencies.haptics),
+                    viewModel: RhymesViewModel(
+                        rhymeAudioService: dependencies.rhymeAudioService,
+                        haptics: dependencies.haptics
+                    ),
                     coordinator: self
                 )
 

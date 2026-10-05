@@ -333,10 +333,22 @@ private final class SpeechEngine: NSObject, @unchecked Sendable {
     }
 
     private func configureAudioSession() {
-        // `.ambient` so the app never interrupts music or a podcast a parent
-        // has playing, and `.duckOthers` so speech is still audible over it.
+        // `.playback` rather than `.ambient`: the whole app is audio — a child
+        // who can't hear it has nothing. Under `.ambient` the hardware silent
+        // switch muted every spoken line and every rhyme, so a parent handing
+        // over a silenced phone got an app that looked broken.
+        //
+        // The category is process-wide, not per-player, so `RhymeAudioService`
+        // sets the same one; if the two disagreed, whichever spoke last would
+        // win and behaviour would depend on the screen order. `.duckOthers` is
+        // kept so a parent's music is lowered rather than stopped.
+        //
+        // Deliberately NOT paired with the `audio` UIBackgroundMode: `.playback`
+        // only *permits* background audio, and with that key a rhyme would sing
+        // on after the child leaves the app while the session timer stopped
+        // counting their time.
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.ambient, mode: .spokenAudio, options: [.duckOthers])
+        try? session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
         try? session.setActive(true)
     }
 

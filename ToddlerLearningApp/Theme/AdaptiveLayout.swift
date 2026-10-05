@@ -72,6 +72,13 @@ struct AdaptiveLayout {
     /// branch rather than a text style — 150pt is lost on an iPad.
     var heroGlyphSize: CGFloat { isRegular ? 240 : 150 }
 
+    // MARK: - Rhymes
+
+    /// Wider than the Home tiles ask for. A rhyme tile is mostly picture — it
+    /// is how a child who can't read the title picks a song — and at the old
+    /// hardcoded 150 the artwork was a fifth of the tile.
+    var rhymeTileMinimumWidth: CGFloat { isRegular ? 220 : 164 }
+
     /// Minimum width for a jump-strip tile. The fixed five columns stretched
     /// each tile to 250x76 on an iPad; asking for a width keeps them squarer
     /// and simply yields more columns as the screen widens.

@@ -7,13 +7,10 @@
 //  its own protocol, same reasoning as SpeechServicing: call sites depend on
 //  RhymeAudioPlaying, not AVAudioPlayer directly.
 //
-//  Licensed/public-domain recordings are not bundled yet — sourcing them and
-//  adding them to a Resources/RhymeAudio folder reference is a content task,
-//  not an engineering one — see docs/PRODUCT_SPEC.md. Until then, `play(_:)`
-//  falls back to reading the lyric lines aloud with AVSpeechSynthesizer, one
-//  line at a time, so the feature works end-to-end rather than playing
-//  silence. This is a placeholder, not a real "sing along" — swap it out the
-//  moment a bundled clip exists for a given rhyme.
+//  Every rhyme ships a real sung recording in Resources/RhymeAudio. The
+//  read-aloud fallback in `playSynthesized` survives for a rhyme whose file is
+//  missing — it speaks the lyric lines one at a time, so the feature degrades
+//  to something audible rather than to silence.
 //
 //  This service only knows about audio playback, and needn't silence
 //  SpeechService before a rhyme starts: each screen's speech is stopped by
@@ -39,6 +36,10 @@ protocol RhymeAudioPlaying: AnyObject {
     /// detail view needs the real clock rather than a fraction. Stays 0 on the
     /// read-aloud fallback path, which has no recording to be positioned in.
     var currentTime: TimeInterval { get }
+    /// The rhyme currently loaded, playing or paused — the rhymes grid marks
+    /// it. Survives `pause()`, since a paused rhyme is still the one the child
+    /// is on; cleared by `stop()` and by a track finishing.
+    var currentRhymeID: String? { get }
     /// Called when a track ends of its own accord. See the implementation.
     var onFinished: (() -> Void)? { get set }
     func play(_ rhyme: Rhyme)
@@ -54,6 +55,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
     private(set) var isPlaying = false
     private(set) var progress: Double = 0
     private(set) var currentTime: TimeInterval = 0
+    private(set) var currentRhymeID: String?
 
     /// Fired when a track reaches its natural end — not on `pause()` or an
     /// explicit `stop()`. This is what the detail view model used to infer by
@@ -100,6 +102,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
             newPlayer.delegate = self
             player = newPlayer
             newPlayer.play()
+            currentRhymeID = rhyme.id
             isPlaying = true
             progress = 0
             currentTime = 0
@@ -109,12 +112,16 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
         }
     }
 
+    /// Keeps `currentRhymeID` and `progress`, so the screen behind can show
+    /// which rhyme the child is on and `resume()` picks up where they left off.
     func pause() {
-        if isSynthesizing {
-            synthesizer.pauseSpeaking(at: .word)
-        } else {
-            player?.pause()
+        guard let player else {
+            // Nothing pausable. A suspended synthesizer would hold its utterance
+            // queue across screens, so the read-aloud path stops outright.
+            stop()
+            return
         }
+        player.pause()
         isPlaying = false
         stopProgressTimer()
     }
@@ -141,6 +148,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
         currentLineIndex = 0
         player?.stop()
         player = nil
+        currentRhymeID = nil
         isPlaying = false
         progress = 0
         currentTime = 0
@@ -154,6 +162,8 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
         guard !rhyme.lines.isEmpty else { return }
 
         configureAudioSession()
+        // After `stop()` above, which clears it.
+        currentRhymeID = rhyme.id
         synthesizedLines = rhyme.lines
         currentLineIndex = 0
         isSynthesizing = true
@@ -203,6 +213,7 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
         isSynthesizing = false
         isPlaying = false
         progress = 0
+        currentRhymeID = nil
         onFinished?()
     }
 
@@ -215,8 +226,10 @@ final class RhymeAudioService: NSObject, RhymeAudioPlaying {
     }
 
     private func configureAudioSession() {
+        // `.playback`, matching `SpeechService` — see the longer note there for
+        // why, and for why this must not gain the `audio` UIBackgroundMode.
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.ambient, mode: .default, options: [.duckOthers])
+        try? session.setCategory(.playback, mode: .default, options: [.duckOthers])
         try? session.setActive(true)
     }
 

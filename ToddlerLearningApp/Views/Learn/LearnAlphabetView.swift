@@ -23,9 +23,8 @@ struct LearnAlphabetView: View {
                      coordinator: coordinator,
                      title: "Learn Letters",
                      itemNoun: "letter") { letter in
-            // No "Hear a rhyme" link on this screen — `nil` hides it.
             BrowseStage(item: letter,
-                        linkedRhymeID: nil,
+                        linkedRhymeID: RhymeContent.rhymes(forLetter: letter.id).first?.id,
                         onRepeat: { viewModel.repeatSound() },
                         coordinator: coordinator) {
                 HStack(spacing: AppSpacing.section) {

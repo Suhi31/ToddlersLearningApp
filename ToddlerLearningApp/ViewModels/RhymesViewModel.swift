@@ -16,10 +16,23 @@ final class RhymesViewModel {
 
     let rhymes: [Rhyme] = RhymeContent.rhymes
 
+    private let rhymeAudioService: RhymeAudioPlaying
     private let haptics: HapticsService
 
-    init(haptics: HapticsService) {
+    init(rhymeAudioService: RhymeAudioPlaying, haptics: HapticsService) {
+        self.rhymeAudioService = rhymeAudioService
         self.haptics = haptics
+    }
+
+    /// The rhyme the child is on, playing or paused — the detail screen pauses
+    /// rather than stopping when it leaves, so coming back here the tile they
+    /// were listening to is still marked.
+    func isCurrent(_ rhyme: Rhyme) -> Bool {
+        rhymeAudioService.currentRhymeID == rhyme.id
+    }
+
+    func isPlaying(_ rhyme: Rhyme) -> Bool {
+        isCurrent(rhyme) && rhymeAudioService.isPlaying
     }
 
     func onAppear() {

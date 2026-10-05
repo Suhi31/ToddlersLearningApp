@@ -216,16 +216,34 @@ struct BrowseStage<Item: BrowsableItem, Illustration: View>: View {
             .buttonStyle(BouncyButtonStyle())
             .padding(.top, AppSpacing.tight)
 
-            if let linkedRhymeID {
-                Button {
-                    coordinator.push(.rhymeDetail(linkedRhymeID))
-                } label: {
-                    Label("Hear a rhyme", systemImage: "music.note")
-                        .font(AppFonts.caption)
-                        .foregroundStyle(tint)
+            // Reserved whether or not this item has a rhyme: only 11 of the 26
+            // letters and 2 of the 10 numbers do, so without this the card
+            // changes height as the child pages and the arrow row jumps under
+            // the finger about to tap it. Not reserved on a short screen, which
+            // has no height to spare.
+            Group {
+                if let linkedRhymeID {
+                    Button {
+                        // `startActivity`, not `push`: a two-minute sung rhyme
+                        // is an activity, so the daily allowance has to gate it
+                        // exactly as it gates one started from Home.
+                        coordinator.startActivity(.rhymeDetail(linkedRhymeID))
+                    } label: {
+                        Label("Hear a rhyme", systemImage: "music.note")
+                            .font(AppFonts.body)
+                            .foregroundStyle(tint)
+                            .padding(.horizontal, AppSpacing.section)
+                            .frame(height: 52)
+                            // Outlined where "Hear it again" is filled: a real
+                            // second action rather than the fine print it used
+                            // to be, without competing with the primary one.
+                            .background(tint.opacity(0.12), in: Capsule())
+                            .overlay(Capsule().strokeBorder(tint, lineWidth: 2))
+                    }
+                    .buttonStyle(BouncyButtonStyle())
                 }
-                .buttonStyle(.plain)
             }
+            .frame(height: isShort ? nil : 52)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, AppSpacing.element)
